@@ -1,5 +1,7 @@
+import sys
 from pathlib import Path
 import re
+import traceback
 
 from dissect.cstruct import cstruct
 import zlib
@@ -59,11 +61,11 @@ def parse_chunk(raw_chunk):
     data_left = bytes(parsed.data)
     total = len(data_left)
     for chunk_section in parsed.header.sections:
-        print(chunk_section)
+        # print(chunk_section)
         if chunk_section.index == -1:
             continue
         decompress_object = zlib.decompressobj()
-        print(f"0x{total - len(data_left):X}/0x{total:X} bytes parsed")
+        # print(f"0x{total - len(data_left):X}/0x{total:X} bytes parsed")
 
         decompressed_chunk = decompress_object.decompress(data_left)
         chunk_sections.append(decompressed_chunk)
@@ -76,33 +78,62 @@ def parse_cdb_stream(cdb):
     for chunk_index in range(40):
         raw_chunk = cdb.read(parser.chunk.size)
         chunks.append(parse_chunk(raw_chunk))
-    out_path = Path(__file__).parent / "out"
-    out_path.mkdir()
-    for index, chunk in enumerate(chunks):
-        chunk_path = out_path / f"chunk{index:d}"
-        chunk_path.mkdir()
-        for section_index, chunk_section in enumerate(chunk[0]):
-            chunk_section_path = chunk_path / f"section{section_index:d}"
-            with open(chunk_section_path, "wb") as out:
-                out.write(chunk_section)
+    return chunks
 
 
 def parse_cdb(path):
     with open(path, "rb") as handle:
-        parse_cdb_stream(handle)
+        return parse_cdb_stream(handle)
+
+
+cdb_expression = re.compile(R"slt([1-9]\d*)\.cdb")
 
 
 def get_cdb_files(world_path):
+    """
+    gets the CDB filenames from a path
+    """
+    result = {}
     cdb_path = world_path / "db" / "cdb"
-    return filter(lambda path: path.is_file(), cdb_path.iterdir())
+    files = filter(lambda path: path.is_file(), cdb_path.iterdir())
+    for cdb_file in files:
+        filename = cdb_file.name
+        matched = cdb_expression.fullmatch(filename)
+        if matched is None:
+            continue
+        cdb_number = int(matched[1])
+        result[cdb_number] = cdb_file
+    return result
 
 
 def main():
     script_path = Path(__file__).parent
     world_input = input("Enter path to world: ")
-    cdb_input = input("Enter CDB filename (slt#.cdb): ")
-    cdb_path = Path(world_input) / "db" / "cdb" / cdb_input
-    parse_cdb(cdb_path)
+    cdb_files = get_cdb_files(script_path / world_input)
+    out_path = Path(__file__).parent / "out"
+    if out_path.exists():
+        print(
+            'already extracted, please move or delete the "out" folder', file=sys.stderr
+        )
+        sys.exit(1)
+    out_path.mkdir()
+    for number, cdb_file in cdb_files.items():
+        region_path = out_path / f"region{number:d}"
+        try:
+            chunks = parse_cdb(cdb_file)
+        except Exception:
+            traceback.print_exc()
+            print(f"error parsing region {number:d}", file=sys.stderr)
+            continue
+        else:
+            print(f"extracted region {number:d}!")
+        for index, chunk in enumerate(chunks):
+            chunk_path = out_path / f"chunk{index:d}"
+            chunk_path.mkdir()
+            for section_index, chunk_section in enumerate(chunk[0]):
+                chunk_section_path = chunk_path / f"section{section_index:d}"
+                with open(chunk_section_path, "wb") as out:
+                    out.write(chunk_section)
 
 
 if __name__ == "__main__":
