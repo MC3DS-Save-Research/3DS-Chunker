@@ -108,17 +108,18 @@ def get_cdb_files(world_path):
 
 def main():
     script_path = Path(__file__).parent
-    world_input = input("Enter path to world: ")
-    cdb_files = get_cdb_files(script_path / world_input)
-    out_path = Path(__file__).parent / "out"
+    out_path = script_path / "out"
     if out_path.exists():
         print(
             'already extracted, please move or delete the "out" folder', file=sys.stderr
         )
         sys.exit(1)
     out_path.mkdir()
+    world_input = input("Enter path to world: ")
+    cdb_files = get_cdb_files(script_path / world_input)
     for number, cdb_file in cdb_files.items():
         region_path = out_path / f"region{number:d}"
+        region_path.mkdir()
         try:
             chunks = parse_cdb(cdb_file)
         except Exception:
@@ -128,7 +129,7 @@ def main():
         else:
             print(f"extracted region {number:d}!")
         for index, chunk in enumerate(chunks):
-            chunk_path = out_path / f"chunk{index:d}"
+            chunk_path = region_path / f"chunk{index:d}"
             chunk_path.mkdir()
             for section_index, chunk_section in enumerate(chunk[0]):
                 chunk_section_path = chunk_path / f"section{section_index:d}"
