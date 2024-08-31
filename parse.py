@@ -33,7 +33,7 @@ struct chunkSection {
 
 struct chunkHeader {
     commonHeader common;
-    uint8 unknown0[0x4];
+    uint32 unknown;
     chunkSection sections[6];
 };
 
@@ -56,24 +56,39 @@ size_check(parser.chunkHeader, 0x84, "chunk header")
 size_check(parser.chunk, 0x2800, "chunk")
 
 
-def parse_cdb_stream(cdb):
-    chunk_struct = parser.chunk
-    parsed = chunk_struct(cdb)
-    chunks = []
+def parse_chunk(raw_chunk):
+    parsed = parser.chunk(raw_chunk)
+    chunk_sections = []
     data_left = bytes(parsed.data)
     total = len(data_left)
     for chunk_section in parsed.header.sections:
         print(chunk_section)
-        print(" ".join(f"{byte:02X}" for byte in data_left[:10]))
+        if chunk_section.index == -1:
+            continue
         decompress_object = zlib.decompressobj()
-        input(f"0x{total - len(data_left):X}/0x{total:X} bytes parsed")
+        print(f"0x{total - len(data_left):X}/0x{total:X} bytes parsed")
 
         decompressed_chunk = decompress_object.decompress(data_left)
-        chunks.append(decompressed_chunk)
+        chunk_sections.append(decompressed_chunk)
         data_left = decompress_object.unused_data
-    with open(Path(__file__).parent / "chunk", "wb") as chunk_out:
-        chunk_out.write(decompressed_chunk)
-        input("decompressed")
+    return chunk_sections, parsed.header.unknown
+
+
+def parse_cdb_stream(cdb):
+    chunks = []
+    for chunk_index in range(40):
+        raw_chunk = cdb.read(parser.chunk.size)
+        chunks.append(parse_chunk(raw_chunk))
+    out_path = Path(__file__).parent / "out"
+    out_path.mkdir()
+    for index, chunk in enumerate(chunks):
+        chunk_path = out_path / f"chunk{index:d}"
+        chunk_path.mkdir()
+        for section_index, chunk_section in enumerate(chunk[0]):
+            chunk_section_path = chunk_path / f"section{section_index:d}"
+            print(chunk_section)
+            with open(chunk_section_path, "wb") as out:
+                out.write(chunk_section)
 
 
 def parse_cdb(path):
