@@ -62,13 +62,10 @@ def parse_cdb_stream(cdb):
     chunks = []
     data_left = bytes(parsed.data)
     total = len(data_left)
-    # read header
-    header = parser.chunkHeader(data_left)
-    # remove the header from the data
-    data_left = data_left[header.size :]
-    while data_left:
-        decompress_object = zlib.decompressobj()
+    for chunk_section in parsed.header.sections:
+        print(chunk_section)
         print(" ".join(f"{byte:02X}" for byte in data_left[:10]))
+        decompress_object = zlib.decompressobj()
         input(f"0x{total - len(data_left):X}/0x{total:X} bytes parsed")
 
         decompressed_chunk = decompress_object.decompress(data_left)
@@ -91,8 +88,8 @@ def get_cdb_files(world_path):
 
 def main():
     script_path = Path(__file__).parent
-    world_input = "../Work/SKYER"  # input("Enter path to world: ")
-    cdb_input = "slt246.cdb"  # input("Enter CDB filename (slt#.cdb): ")
+    world_input = input("Enter path to world: ")
+    cdb_input = input("Enter CDB filename (slt#.cdb): ")
     cdb_path = Path(world_input) / "db" / "cdb" / cdb_input
     parse_cdb(cdb_path)
 
