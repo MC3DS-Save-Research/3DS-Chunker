@@ -18,12 +18,12 @@ struct commonHeader {
     uint16 unknown1;
 
     uint8 unknownBitmask; // USUALLY only has one bit set at a time, for some reaso
-    padding[0xF];
+    uint8 unknown2[0xF];
     uint32 magic;
-    padding[0x8];
+    uint8 unknown3[0x8];
 };
 
-struct CDBData {
+struct chunkSection {
     // -1 = missing
     int32 index;
     int32 compressedSize;
@@ -31,32 +31,39 @@ struct CDBData {
     uint32 unknown;
 };
 
-struct CDBHeader {
+struct chunkHeader {
     commonHeader common;
-    padding[0x4];
-    CDBData data[6];
+    uint8 unknown0[0x4];
+    chunkSection sections[6];
 };
 
-struct CDB {
-    CDBHeader header;
+struct chunk {
+    chunkHeader header;
+    uint8 data[0x2800-0x84];
 };
-
-CDB cdb @ 0x00;
 """
 parser = cstruct().load(DEFINITION)
 
-assert parser.commonHeader.size == 0x20, hex(parser.commonHeader.size)
-assert parser.cdbHeader.size == 0x84, hex(parser.cdbHeader.size)
+
+def size_check(struct, expected_size, name):
+    assert (
+        struct.size == expected_size
+    ), f"size of {name} is 0x{struct.size:X}, should be 0x{expected_size:X}"
+
+
+size_check(parser.commonHeader, 0x20, "common header")
+size_check(parser.chunkHeader, 0x84, "chunk header")
+size_check(parser.chunk, 0x2800, "chunk")
 
 
 def parse_cdb_stream(cdb):
-    cdb_struct = parser.cdb
-    parsed = cdb_struct(cdb)
+    chunk_struct = parser.chunk
+    parsed = chunk_struct(cdb)
     chunks = []
-    data_left = bytes(parsed.chunks[2].zlibCompressedData)
-    total = parser.chunk.size
+    data_left = bytes(parsed.data)
+    total = len(data_left)
     # read header
-    header = parser.cdbHeader(data_left)
+    header = parser.chunkHeader(data_left)
     # remove the header from the data
     data_left = data_left[header.size :]
     while data_left:
@@ -84,7 +91,11 @@ def get_cdb_files(world_path):
 
 def main():
     script_path = Path(__file__).parent
-    parse_cdb(input("Enter path to world: "))
+    world_input = "../Work/SKYER"  # input("Enter path to world: ")
+    cdb_input = "slt246.cdb"  # input("Enter CDB filename (slt#.cdb): ")
+    cdb_path = Path(world_input) / "db" / "cdb" / cdb_input
+    parse_cdb(cdb_path)
+
 
 if __name__ == "__main__":
     main()
