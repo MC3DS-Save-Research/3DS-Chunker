@@ -1,8 +1,5 @@
 from pathlib import Path
 import re
-import itertools
-import random
-from io import BytesIO
 
 from dissect.cstruct import cstruct
 import zlib
@@ -86,7 +83,6 @@ def parse_cdb_stream(cdb):
         chunk_path.mkdir()
         for section_index, chunk_section in enumerate(chunk[0]):
             chunk_section_path = chunk_path / f"section{section_index:d}"
-            print(chunk_section)
             with open(chunk_section_path, "wb") as out:
                 out.write(chunk_section)
 
