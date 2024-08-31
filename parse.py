@@ -13,29 +13,35 @@ DEFINITION = """
 #define MAGIC_VDB 0xABCDEF99
 
 struct commonHeader {
-    // I think these are 16-bit, always 1
+    // I think these are 16-bit, and are usually 1
     uint16 unknown0;
     uint16 unknown1;
 
-    uint8 unknownBitmask; // usually only has one bit set at a time, for some reason
-
-    uint8 unknown2[0xF];
-    uint32 magic; // MAGIC_CDB or MAGIC_VDB
-    uint8 unknown3[0x8];
-};
-struct cdbHeader {
-    struct commonHeader common;
-    uint8 unknown0[0x64]; // 100 in decimal, that probably means something
+    uint8 unknownBitmask; // USUALLY only has one bit set at a time, for some reaso
+    padding[0xF];
+    uint32 magic;
+    padding[0x8];
 };
 
-struct chunk {
-    uint8 zlibCompressedData[0x2800];
+struct CDBData {
+    // -1 = missing
+    int32 index;
+    int32 compressedSize;
+    int32 decompressedSize;
+    uint32 unknown;
 };
 
-struct cdb {
-    struct chunk chunks[128];
-    uint8 unknown[0x14];
+struct CDBHeader {
+    commonHeader common;
+    padding[0x4];
+    CDBData data[6];
 };
+
+struct CDB {
+    CDBHeader header;
+};
+
+CDB cdb @ 0x00;
 """
 parser = cstruct().load(DEFINITION)
 
@@ -78,7 +84,7 @@ def get_cdb_files(world_path):
 
 def main():
     script_path = Path(__file__).parent
-    parse_cdb(input("Enter path to CDB: "))
+    parse_cdb(input("Enter path to world: "))
 
 if __name__ == "__main__":
     main()
