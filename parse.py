@@ -57,7 +57,7 @@ size_check(parser.chunk, 0x2800, "chunk")
 
 def parse_chunk(raw_chunk):
     parsed = parser.chunk(raw_chunk)
-    chunk_sections = []
+    chunk_sections = {}
     data_left = bytes(parsed.data)
     total = len(data_left)
     for chunk_section in parsed.header.sections:
@@ -68,7 +68,7 @@ def parse_chunk(raw_chunk):
         # print(f"0x{total - len(data_left):X}/0x{total:X} bytes parsed")
 
         decompressed_chunk = decompress_object.decompress(data_left)
-        chunk_sections.append(decompressed_chunk)
+        chunk_sections[chunk_section.index] = decompressed_chunk
         data_left = decompress_object.unused_data
     return chunk_sections, parsed.header.unknown
 
@@ -131,7 +131,7 @@ def main():
         for index, chunk in enumerate(chunks):
             chunk_path = region_path / f"chunk{index:d}"
             chunk_path.mkdir()
-            for section_index, chunk_section in enumerate(chunk[0]):
+            for section_index, chunk_section in chunk[0].items():
                 chunk_section_path = chunk_path / f"section{section_index:d}"
                 with open(chunk_section_path, "wb") as out:
                     out.write(chunk_section)
