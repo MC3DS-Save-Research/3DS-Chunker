@@ -1,3 +1,5 @@
+# released under MIT license
+
 import sys
 from pathlib import Path
 import re
