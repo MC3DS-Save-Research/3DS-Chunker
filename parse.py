@@ -141,3 +141,7 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+# Licensed under the MIT License
+# Copyright (c) 2024 Anonymous941
+# See the LICENSE file for more information.
