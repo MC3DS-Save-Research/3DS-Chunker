@@ -1,0 +1,3 @@
+[submodule "xnbt"]
+	path = xnbt
+	url = https://github.com/MCPI-Revival/xnbt

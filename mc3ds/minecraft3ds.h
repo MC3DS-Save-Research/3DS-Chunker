@@ -1,6 +1,7 @@
 #define MAGIC_CDB 0xABCDEF98
 #define MAGIC_VDB 0xABCDEF99
 
+// the first subfile has a file header and the rest have garbage here
 struct FileHeader {
     // both are always 1
     uint16 something0;
@@ -12,16 +13,15 @@ struct FileHeader {
 };
 
 struct SubfileHeader {
-    uint8 unknown0[sizeof(FileHeader)]; // the first subfile has a file header and the rest have garbage here
     uint32 magic;
-    uint8 unknown1[8]; // unknown
+    uint8 unknown0[8];
 };
 
 struct ChunkSection {
     int32 index; // -1 = empty
-    int32 compressedSize; // -1 = empty
+    int32 position; // -1 = empty; subtract 0xC to get the position within the chunk
+    int32 compressedSize; // 0 = empty
     int32 decompressedSize; // 0 = empty
-    int32 unknown; // 0 = empty
 };
 
 struct ChunkHeader {

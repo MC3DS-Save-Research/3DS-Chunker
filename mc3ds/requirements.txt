@@ -1,1 +1,2 @@
 dissect.cstruct==4.0
+click==8.1.7
