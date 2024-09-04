@@ -4,47 +4,9 @@ import sys
 from pathlib import Path
 import shutil
 import re
-import traceback
 
-from dissect.cstruct import cstruct
-import zlib
-
-# TODO update these
-DEFINITION = """
-#define MAGIC_CDB 0xABCDEF98
-#define MAGIC_VDB 0xABCDEF99
-
-struct FileHeader {
-    // both are always 1
-    uint16 something0;
-    uint16 something1;
-    uint32 subfileCount; // total number of subfiles
-    uint32 unknown0;
-    uint32 subfileSize; // size of each subfile
-    uint32 unknown1;
-};
-
-struct SubfileHeader {
-    uint8 unknown0[sizeof(FileHeader)]; // the first subfile has a file header and the rest have garbage here
-    uint32 magic;
-    uint8 unknown1[8]; // unknown
-};
-
-struct ChunkSection {
-    int32 index; // -1 = empty
-    int32 compressedSize; // -1 = empty
-    int32 decompressedSize; // 0 = empty
-    int32 unknown; // 0 = empty
-};
-
-struct ChunkHeader {
-    SubfileHeader subfileHeader;
-    int16 unknown0;
-    int16 unknown1;
-    ChunkSection sections[6];
-};
-"""
-parser = cstruct().load(DEFINITION)
+from classes import *
+from parser import *
 
 
 def size_check(struct, expected_size, name):
@@ -55,52 +17,7 @@ def size_check(struct, expected_size, name):
 
 size_check(parser.FileHeader, 0x14, "file header")
 size_check(parser.SubfileHeader, 0x20, "subfile header")
-size_check(parser.ChunkHeader, 0x84, "chunk header")
-
-
-def parse_chunk(stream, subfile_size):
-    header = parser.ChunkHeader(stream)
-    unknown = (header.unknown0, header.unknown1)
-    # sometimes there are chunks with all 0 for some reason
-    if header.subfileHeader.magic == 0x0:
-        return None
-    errors = 0
-    chunk_sections = {}
-    data_left = stream.read(subfile_size - header.size)
-    total = len(data_left)
-    for chunk_section in header.sections:
-        if chunk_section.index == -1:
-            continue
-        decompress_object = zlib.decompressobj()
-        # print(f"0x{total - len(data_left):X}/0x{total:X} bytes parsed")
-
-        try:
-            decompressed_chunk = decompress_object.decompress(data_left)
-        except Exception:
-            print(f"decompression error", file=sys.stderr)
-            errors += 1
-            # traceback.print_exc()
-            continue
-        chunk_sections[chunk_section.index] = decompressed_chunk
-        data_left = decompress_object.unused_data
-    # if header.unknown0 != 0x3:
-    #     input(repr(header))
-    return (chunk_sections, unknown, errors)
-
-
-def parse_cdb_stream(stream):
-    old_seek = stream.tell()
-    file_header = parser.FileHeader(stream)
-    stream.seek(old_seek)
-    chunks = []
-    for chunk_index in range(file_header.subfileCount):
-        chunks.append(parse_chunk(stream, file_header.subfileSize))
-    return chunks
-
-
-def parse_cdb(path):
-    with open(path, "rb") as handle:
-        return parse_cdb_stream(handle)
+size_check(parser.ChunkHeader, 0x64, "chunk header")
 
 
 cdb_expression = re.compile(R"slt([1-9]\d*)\.cdb")
@@ -141,18 +58,16 @@ def main():
     for number, cdb_file in cdb_files.items():
         region_path = out_path / f"region{number:d}"
         region_path.mkdir()
-        print(f"parsing region {number:d}")
-        chunks = parse_cdb(cdb_file)
+        with open(cdb_file, "rb") as stream:
+            new = CDBFile(stream)
+            for index, chunk in new:
+                chunk_path = region_path / f"chunk{index:d}"
+                chunk_path.mkdir()
+                for subchunk_index, subchunk in chunk:
+                    subchunk_path = chunk_path / f"subchunk{subchunk_index:d}"
+                    with open(subchunk_path, "wb") as out:
+                        out.write(subchunk.decompressed)
         print(f"extracted region {number:d}!")
-        for index, chunk in enumerate(chunks):
-            if chunk is None:
-                continue
-            chunk_path = region_path / f"chunk{index:d}"
-            chunk_path.mkdir()
-            for section_index, chunk_section in chunk[0].items():
-                chunk_section_path = chunk_path / f"section{section_index:d}"
-                with open(chunk_section_path, "wb") as out:
-                    out.write(chunk_section)
 
 
 if __name__ == "__main__":
