@@ -1,3 +1,3 @@
 [submodule "xnbt"]
-	path = xnbt
+	path = mc3ds/xnbt
 	url = https://github.com/MCPI-Revival/xnbt

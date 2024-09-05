@@ -29,3 +29,14 @@ struct ChunkHeader {
     int16 unknown1;
     ChunkSection sections[6];
 };
+
+struct VDBHeader {
+    // hack to get around dissect.cstruct's limitations
+    uint32 magic;
+    uint8 nameSize;
+    uint8 padding[7];
+
+    int32 unknown0;
+    char name[nameSize];
+    int16 unknown1;
+}

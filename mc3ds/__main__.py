@@ -25,8 +25,8 @@ from .parser import *
     help="Directory for output",
 )
 @click.option(
-    "-d",
     "--delete-out",
+    is_flag=True,
     help="Permanently delete the out folder and its contents if it exists (make sure it's the right folder!)",
 )
 def main(path: Path, out: Path, delete_out: bool = False) -> None:
@@ -46,8 +46,24 @@ def main(path: Path, out: Path, delete_out: bool = False) -> None:
     world = World(path)
     print(f"World name: {world.name}")
     out.mkdir()
+
+    vdb_out = out / "vdb"
+    vdb_out.mkdir()
+    for number, vdb_file in world.vdb:
+        region_path = vdb_out / f"region{number:d}"
+        region_path.mkdir()
+        for index, data in vdb_file:
+            try:
+                name = data.name.decode()
+            except UnicodeDecodeError:
+                name = "None"
+            subfile_path = region_path / name
+            with open(subfile_path, "wb") as subfile_out:
+                subfile_out.write(data._subfile.raw)
+    cdb_out = out / "cdb"
+    cdb_out.mkdir()
     for number, cdb_file in world.cdb:
-        region_path = out / f"region{number:d}"
+        region_path = cdb_out / f"region{number:d}"
         region_path.mkdir()
         for index, chunk in cdb_file:
             chunk_path = region_path / f"chunk{index:d}"

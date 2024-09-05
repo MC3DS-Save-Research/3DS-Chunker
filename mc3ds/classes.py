@@ -1,6 +1,7 @@
 import os
+from abc import abstractmethod
 from io import BytesIO
-import typing
+from typing import Any
 from pathlib import Path
 import zlib
 import re
@@ -67,13 +68,21 @@ class Subfile(BaseParser):
         content = self._stream.read(self.size - self._header.size)
         return content
 
+    @property
+    def raw_with_header(self) -> bytes | None:
+        if self.filler:
+            return None
+        self._seek(0)
+        content = self._stream.read(self.size)
+        return content
+
 
 class IterDB:
     def __init__(self, db) -> None:
         self._db = db
         self.__index = 0
 
-    def __next__(self) -> tuple[int, typing.Any]:
+    def __next__(self) -> tuple[int, Any]:
         while True:
             if self.__index > len(self._db) - 1:
                 raise StopIteration
@@ -107,7 +116,7 @@ class DBFile(BaseParser):
     def __len__(self) -> int:
         return self.subfile_count
 
-    def _parse(self, subfile: Subfile):
+    def _parse(self, subfile: Subfile) -> Any:
         return subfile
 
     def __iter__(self) -> IterDB:
@@ -227,44 +236,70 @@ class Chunk:
         return subchunk
 
 
+class VDBData:
+    def __init__(self, subfile) -> None:
+        self._subfile = subfile
+        self._reload_data()
+
+    def _reload_data(self) -> None:
+        self._raw = self._subfile.raw_with_header
+        self._header = parser.VDBHeader(self._raw)
+
+    @property
+    def name(self) -> str:
+        return self._header.name
+
+    @property
+    def filler(self) -> bool:
+        return self._subfile.filler
+
+
+class VDBFile(DBFile):
+    def _parse(self, subfile: Subfile) -> VDBData:
+        return VDBData(subfile)
+
+
 class CDBFile(DBFile):
-    def _parse(self, subfile: Subfile):
+    def _parse(self, subfile: Subfile) -> Chunk:
         return Chunk(subfile)
 
 
-class IterCDBDirectory:
-    def __init__(self, cdb_directory):
-        self._cdb_directory = cdb_directory
-        self._keys = list(sorted(cdb_directory.keys()))
+class IterDBDirectory:
+    def __init__(self, db_directory):
+        self._db_directory = db_directory
+        self._keys = list(sorted(db_directory.keys()))
 
-    def __next__(self) -> tuple[int, CDBFile]:
+    def __next__(self) -> tuple[int, DBFile]:
         try:
             new_key = self._keys.pop(0)
         except IndexError:
             raise StopIteration
-        return new_key, self._cdb_directory[new_key]
+        return new_key, self._db_directory[new_key]
 
 
-class CDBDirectory:
-    cdb_expression = re.compile(R"slt([1-9]\d*)\.cdb")
+class DBDirectory:
+    @property
+    @abstractmethod
+    def file_expression(self):
+        pass
 
     def __init__(self, path: str | bytes | os.PathLike) -> None:
-        self._path = path
+        self._path = Path(path)
         self._reload_data()
 
-    def __iter__(self) -> IterCDBDirectory:
-        return IterCDBDirectory(self)
+    def __iter__(self) -> IterDBDirectory:
+        return IterDBDirectory(self)
 
     def _reload_data(self) -> None:
-        cdb_files = filter(lambda path: path.is_file(), self._path.iterdir())
-        self._cdb_files = {}
-        for cdb_file in cdb_files:
-            filename = cdb_file.name
-            matched = self.cdb_expression.fullmatch(filename)
+        files = filter(lambda path: path.is_file(), self._path.iterdir())
+        self._files = {}
+        for db_file in files:
+            filename = db_file.name
+            matched = self.file_expression.fullmatch(filename)
             if matched is None:
                 continue
             cdb_number = int(matched[1])
-            self._cdb_files[cdb_number] = cdb_file
+            self._files[cdb_number] = db_file
 
     @property
     def path(self) -> str | bytes | os.PathLike:
@@ -276,14 +311,36 @@ class CDBDirectory:
         self._reload_data()
 
     def keys(self) -> tuple[int]:
-        return tuple(self._cdb_files.keys())
+        return tuple(self._files.keys())
 
     def get_file(self, key: int) -> Path:
-        return self._cdb_files[key]
+        return self._files[key]
 
-    def __getitem__(self, key: int):
-        cdb_path = self._cdb_files[key]
-        return CDBFile(open(cdb_path, "rb"))
+    @abstractmethod
+    def _process(self, stream: BytesIO) -> Any:
+        pass
+
+    def __getitem__(self, key: int) -> Any:
+        path = self._files[key]
+        return self._process(open(path, "rb"))
+
+
+class CDBDirectory(DBDirectory):
+    @property
+    def file_expression(self):
+        return re.compile(R"slt([1-9]\d*)\.cdb")
+
+    def _process(self, stream: BytesIO) -> CDBFile:
+        return CDBFile(stream)
+
+
+class VDBDirectory(DBDirectory):
+    @property
+    def file_expression(self):
+        return re.compile(R"slt([1-9]\d*)\.vdb")
+
+    def _process(self, stream: BytesIO) -> VDBFile:
+        return VDBFile(stream)
 
 
 class World:
@@ -296,6 +353,7 @@ class World:
         self._cdb_path = self._db_path / "cdb"
         self._vdb_path = self._db_path / "vdb"
         self.cdb = CDBDirectory(self._cdb_path)
+        self.vdb = VDBDirectory(self._vdb_path)
 
         self._level_path = self._path / "level.dat"
         self._level_old_path = self._path / "level.dat_old"
