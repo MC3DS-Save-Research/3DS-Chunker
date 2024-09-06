@@ -53,7 +53,7 @@ struct CDBEntry {
     uint16 unknown1; // how many blocks make up a row?
     uint16 slot; // slot (corresponds to a CDB file), unless it's <16?
     uint16 subfile; // subfile within the slot
-    uint16 blocksPerRow; // always 0x20FF, and the block number is divisible by that
+    uint16 constant0; // always 0x20FF, and the block number is divisible by that
     uint16 constant1; // always 0xA
     uint16 unknown4; // usually 0x1, sometimes 0x2 or 0x3, and on large worlds as high as 0x6e
     uint16 constant2; // always 0x8000, subfile count?
@@ -69,3 +69,7 @@ struct Index {
     IndexPointer pointers[pointerCount];
     CDBEntry entries[entryCount];
 };
+
+struct BlockDataHeader {
+    uint16 unknownSize;
+}

@@ -9,6 +9,7 @@ import click
 
 from .classes import *
 from .parser import parser
+from .convert import convert
 
 
 @click.command()
@@ -81,8 +82,20 @@ def main(path: Path, out: Path, delete_out: bool = False) -> None:
             chunk_path.mkdir()
             for subchunk_index, subchunk in chunk:
                 subchunk_path = chunk_path / f"subchunk{subchunk_index:d}"
-                with open(subchunk_path, "wb") as subchunk_out:
-                    subchunk_out.write(subchunk.decompressed)
+                if subchunk_index == 0:
+                    block_data, tail = subchunk.data
+                    for block_index, block in enumerate(block_data):
+                        convert(block)
+                        sys.exit()
+                        block_path = chunk_path / f"block{block_index:d}"
+                        with open(block_path, "wb") as block_data_out:
+                            block_data_out.write(block)
+                    tail_path = chunk_path / "blocktail"
+                    with open(tail_path, "wb") as tail_out:
+                        tail_out.write(tail)
+                else:
+                    with open(subchunk_path, "wb") as subchunk_out:
+                        subchunk_out.write(subchunk.raw_decompressed)
         print(f"extracted region {number:d}!")
 
 

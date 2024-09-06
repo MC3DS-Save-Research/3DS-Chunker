@@ -1,7 +1,7 @@
 import os
 from abc import abstractmethod
 from io import BytesIO
-from typing import Any
+from typing import Any, Iterable
 from pathlib import Path
 import zlib
 import re
@@ -153,13 +153,14 @@ class Subchunk:
     def __init__(self, header, compressed: bytes) -> None:
         self._header = header
         self._compressed = compressed
+        self.__size_cache = None
 
     @property
     def compressed(self) -> bytes:
         return self._compressed
 
     @property
-    def decompressed(self) -> bytes:
+    def raw_decompressed(self) -> bytes:
         decompress_object = zlib.decompressobj()
         decompressed = decompress_object.decompress(self._compressed)
         compressed_size = len(self._compressed) - len(decompress_object.unused_data)
@@ -172,6 +173,33 @@ class Subchunk:
             f"is not expected size {self._header.decompressedSize:d}"
         )
         return decompressed
+
+    @property
+    def data(self) -> tuple[tuple[bytes], bytes]:
+        decompressed = self.raw_decompressed
+        self.__header_cache = parser.BlockDataHeader(decompressed)
+        data = decompressed[len(self.__header_cache) :]
+        SIZE = 0x2800
+        # every 0x100: split
+        # every 0x10: split
+        # each 0x10 changes in the Y coordinate
+        calculated = self._data_header.unknownSize * SIZE
+        block_data = data[:calculated]
+        other_data = data[calculated:]
+        block_split = tuple(
+            block_data[i : i + SIZE] for i in range(0, len(block_data), SIZE)
+        )
+        return block_split, other_data
+
+    @property
+    def _data_header(self):
+        if self.__header_cache is None:
+            self.__header_cache = parser.BlockDataHeader(self.raw_decompressed)
+        return self.__header_cache
+
+    @property
+    def size(self) -> int:
+        return self._header.unknownSize
 
 
 class IterChunk:
@@ -403,7 +431,7 @@ class World:
         test = {}
         for entry in self._index.entries:
             slot = entry.slot
-            assert entry.blocks == 0x20FF
+            assert entry.constant0 == 0x20FF
             assert entry.constant1 == 0xA
             assert entry.constant2 == 0x8000
             continue
@@ -420,6 +448,9 @@ class World:
                 value = entry.subfile
                 cdb = self.cdb[slot]
                 chunk = self.cdb[slot][entry.subfile]
+                real_size = chunk[0]._header.decompressedSize // 0x2800
+                important = int.from_bytes(chunk[0].raw_decompressed[:2], "little")
+                print(f"real_size=0x{real_size:X}, important=0x{important:X}")
                 # print((entry.x, entry.z))
                 print(entry)
                 print(cdb._header)
@@ -427,6 +458,8 @@ class World:
                 if entry.unknown4 > 0x10:
                     print(f"{entry.slot:d}, {entry.subfile:d}")
                     input("-")
+                else:
+                    print("-")
                 if value in tester:
                     input("ERROR")
                 else:
