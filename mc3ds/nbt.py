@@ -5,7 +5,7 @@ from .xnbt.xnbt import XNBT
 BEDROCK_HEADER_SIZE: int = 0x8
 
 
-class LevelDat:
+class NBT:
     def __init__(self, buffer: bytes) -> None:
         self.xnbt = XNBT("lur")
         self._parse(buffer)

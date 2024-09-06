@@ -6,9 +6,8 @@ from pathlib import Path
 import zlib
 import re
 
-from .leveldat import LevelDat
-
-from .parser import *
+from .nbt import NBT
+from .parser import parser
 
 
 def process_key(key: int, length: int | None = None) -> int:
@@ -36,6 +35,20 @@ class BaseParser:
 
     def _seek(self, position: int) -> None:
         self._stream.seek(self._offset + position)
+
+
+class Index(BaseParser):
+    def _reload_data(self) -> None:
+        self._seek(0)
+        self._data = parser.Index(self._stream)
+
+    @property
+    def pointers(self):
+        return self._data.pointers
+
+    @property
+    def entries(self):
+        return self._data.entries
 
 
 class Subfile(BaseParser):
@@ -253,6 +266,24 @@ class VDBData:
     def filler(self) -> bool:
         return self._subfile.filler
 
+    @property
+    def unknown0(self) -> int:
+        return self._header.unknown0
+
+    @property
+    def unknown1(self) -> int:
+        return self._header.unknown1
+
+    @property
+    def unknown2(self) -> int:
+        return self._header.unknown2
+
+    @property
+    def raw(self) -> bytes:
+        if self.filler:
+            return None
+        return self._raw[len(self._header) :]
+
 
 class VDBFile(DBFile):
     def _parse(self, subfile: Subfile) -> VDBData:
@@ -359,13 +390,49 @@ class World:
         self._level_old_path = self._path / "level.dat_old"
         with open(self._level_path, "rb") as level_file:
             buffer = level_file.read()
-        self.metadata = LevelDat(buffer)
+        self.metadata = NBT(buffer)
         if self._level_old_path.exists():
             with open(self._level_old_path, "rb") as level_file:
                 buffer = level_file.read()
-            self.old_metadata = LevelDat(buffer)
+            self.old_metadata = NBT(buffer)
         else:
             self.old_metadata = None
+        with open(self._cdb_path / "newindex.cdb", "rb") as index_file:
+            self._index = Index(index_file)
+
+        test = {}
+        for entry in self._index.entries:
+            slot = entry.slot
+            assert entry.constant0 == 0x20FF
+            assert entry.constant1 == 0xA
+            assert entry.constant2 == 0x8000
+            continue
+            # testing stuff
+            try:
+                tester = test[slot]
+            except KeyError:
+                tester = test[slot] = []
+            if slot < 16:
+                assert slot not in self.cdb.keys()
+                print(f"N {entry}")
+            else:
+                assert slot in self.cdb.keys()
+                value = entry.subfile
+                cdb = self.cdb[slot]
+                chunk = self.cdb[slot][entry.subfile]
+                print((entry.x, entry.z))
+                print(entry)
+                print(cdb._header)
+                print(chunk._header)
+                input("-")
+                if value in tester:
+                    input("ERROR")
+                else:
+                    tester.append(value)
+
+    @property
+    def index(self) -> Index:
+        return self._index
 
     @property
     def path(self) -> Path:

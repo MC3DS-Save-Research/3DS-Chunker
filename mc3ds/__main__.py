@@ -3,12 +3,12 @@
 import sys
 from pathlib import Path
 import shutil
-import re
+import json
 
 import click
 
 from .classes import *
-from .parser import *
+from .parser import parser
 
 
 @click.command()
@@ -57,9 +57,20 @@ def main(path: Path, out: Path, delete_out: bool = False) -> None:
                 name = data.name.decode()
             except UnicodeDecodeError:
                 name = "None"
-            subfile_path = region_path / name
-            with open(subfile_path, "wb") as subfile_out:
-                subfile_out.write(data._subfile.raw)
+            nbt_path = region_path / name
+            nbt_metadata_path = region_path / f"{name}.json"
+            with open(nbt_metadata_path, "x") as subfile_metadata_out:
+                json.dump(
+                    {
+                        "unknown0": f"0x{data.unknown0:X}",
+                        "unknown1": f"0x{data.unknown1:X}",
+                        "unknown2": f"0x{data.unknown2:X}",
+                    },
+                    subfile_metadata_out,
+                )
+            with open(nbt_path, "xb") as subfile_out:
+                subfile_out.write(data.raw)
+
     cdb_out = out / "cdb"
     cdb_out.mkdir()
     for number, cdb_file in world.cdb:
