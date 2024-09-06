@@ -428,26 +428,28 @@ class World:
         with open(self._cdb_path / "newindex.cdb", "rb") as index_file:
             self._index = Index(index_file)
 
+        extracted = {}
         test = {}
         for entry in self._index.entries:
             slot = entry.slot
             assert entry.constant0 == 0x20FF
             assert entry.constant1 == 0xA
             assert entry.constant2 == 0x8000
-            continue
             # testing stuff
             try:
                 tester = test[slot]
             except KeyError:
                 tester = test[slot] = []
-            if slot < 16:
-                assert slot not in self.cdb.keys()
+            # if slot < 16:
+            if slot not in self.cdb.keys():
+                # assert slot not in self.cdb.keys()
                 print(f"N {entry}")
             else:
                 assert slot in self.cdb.keys()
                 value = entry.subfile
                 cdb = self.cdb[slot]
                 chunk = self.cdb[slot][entry.subfile]
+                extracted[(entry.x, entry.z)] = chunk
                 real_size = chunk[0]._header.decompressedSize // 0x2800
                 important = int.from_bytes(chunk[0].raw_decompressed[:2], "little")
                 print(f"real_size=0x{real_size:X}, important=0x{important:X}")
@@ -455,15 +457,16 @@ class World:
                 print(entry)
                 print(cdb._header)
                 print(chunk._header)
-                if entry.unknown4 > 0x10:
-                    print(f"{entry.slot:d}, {entry.subfile:d}")
-                    input("-")
-                else:
-                    print("-")
+                # if entry.unknown4 > 0x10:
+                #     print(f"{entry.slot:d}, {entry.subfile:d}")
+                #     input("-")
+                # else:
+                #     print("-")
                 if value in tester:
                     input("ERROR")
                 else:
                     tester.append(value)
+        self.extracted = extracted
 
     @property
     def index(self) -> Index:

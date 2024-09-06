@@ -85,7 +85,8 @@ def main(path: Path, out: Path, delete_out: bool = False) -> None:
                 if subchunk_index == 0:
                     block_data, tail = subchunk.data
                     for block_index, block in enumerate(block_data):
-                        convert(block)
+                        print(world.extracted)
+                        convert(world.extracted)
                         sys.exit()
                         block_path = chunk_path / f"block{block_index:d}"
                         with open(block_path, "wb") as block_data_out:
