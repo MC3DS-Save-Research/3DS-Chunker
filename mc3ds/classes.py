@@ -403,7 +403,7 @@ class World:
         test = {}
         for entry in self._index.entries:
             slot = entry.slot
-            assert entry.constant0 == 0x20FF
+            assert entry.blocks == 0x20FF
             assert entry.constant1 == 0xA
             assert entry.constant2 == 0x8000
             continue
@@ -420,11 +420,13 @@ class World:
                 value = entry.subfile
                 cdb = self.cdb[slot]
                 chunk = self.cdb[slot][entry.subfile]
-                print((entry.x, entry.z))
+                # print((entry.x, entry.z))
                 print(entry)
                 print(cdb._header)
                 print(chunk._header)
-                input("-")
+                if entry.unknown4 > 0x10:
+                    print(f"{entry.slot:d}, {entry.subfile:d}")
+                    input("-")
                 if value in tester:
                     input("ERROR")
                 else:
