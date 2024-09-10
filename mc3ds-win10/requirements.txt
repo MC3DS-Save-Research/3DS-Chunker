@@ -1,0 +1,4 @@
+dissect.cstruct
+click
+nbtlib
+pyanvileditor
