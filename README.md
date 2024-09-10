@@ -6,5 +6,5 @@
 - [Anonymous941](https://github.com/Anonymous941) - Main Developer of Tool.
 - [DexrnZacAttack](https://github.com/DexrnZacAttack) - Contributor.
 - [Offroaders123](https://github.com/Offroaders123) - Contributor.
-- Evocated - Contributor.
+- <ins>Evocated</ins> - Contributor.
 - [Cracko298](https://github.com/Cracko298) - Contributor.
