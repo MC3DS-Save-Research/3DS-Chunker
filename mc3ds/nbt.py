@@ -1,9 +1,11 @@
 from typing import Any
 
-from .xnbt.xnbt import XNBT
+try:
+    from xnbt.xnbt import XNBT
+except ImportError:
+    from .xnbt.xnbt import XNBT
 
 BEDROCK_HEADER_SIZE: int = 0x8
-
 
 class NBT:
     def __init__(self, buffer: bytes) -> None:

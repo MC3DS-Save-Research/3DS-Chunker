@@ -7,10 +7,14 @@ import json
 
 import click
 
-from .classes import *
-from .parser import parser
-from .convert import convert
-
+try:
+    from classes import *
+    from parser import parser
+    from convert import convert
+except ImportError:
+    from .classes import *
+    from .parser import parser
+    from .convert import convert
 
 @click.command()
 @click.argument(

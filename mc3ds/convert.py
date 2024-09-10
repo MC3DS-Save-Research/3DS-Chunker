@@ -9,8 +9,10 @@ import nbtlib
 from nbtlib.tag import String
 import json
 
-from . import classes
-
+try:
+    import classes
+except ImportError:
+    from . import classes
 
 def convert(
     world_3ds: classes.World,

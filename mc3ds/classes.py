@@ -6,9 +6,12 @@ from pathlib import Path
 import zlib
 import re
 
-from .nbt import NBT
-from .parser import parser
-
+try:
+    from nbt import NBT
+    from parser import parser
+except ImportError:
+    from .nbt import NBT
+    from .parser import parser
 
 def process_key(key: int, length: int | None = None) -> int:
     if length is not None and key > length - 1:
