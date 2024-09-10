@@ -1,3 +1,4 @@
-dissect.cstruct==4.0
-click==8.1.7
-nbtlib==2.0.4
+dissect.cstruct
+click
+nbtlib
+pyanvileditor

@@ -1,2 +1,10 @@
-# CDB-Parser
-WIP parser for Minecraft 3DS CDB files
+# 3DS-Chunker
+- A WIP tool for Converting Worlds to/from 3DS Edition and Java Edition.
+
+
+### Contributors:
+- [Anonymous941](https://github.com/Anonymous941) - Main Developer of Tool.
+- [DexrnZacAttack](https://github.com/DexrnZacAttack) - Contributor.
+- [Offroaders123](https://github.com/Offroaders123) - Contributor.
+- <ins>Evocated</ins> - Contributor.
+- [Cracko298](https://github.com/Cracko298) - Contributor.
