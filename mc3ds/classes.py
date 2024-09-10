@@ -176,6 +176,7 @@ class Subchunk:
 
     @property
     def data(self) -> tuple[tuple[bytes], bytes]:
+        # https://minecraft.wiki/w/Bedrock_Edition_level_format/History
         decompressed = self.raw_decompressed
         self.__header_cache = parser.BlockDataHeader(decompressed)
         data = decompressed[len(self.__header_cache) :]
@@ -186,7 +187,10 @@ class Subchunk:
         block_split = tuple(
             block_data[i : i + SIZE] for i in range(0, len(block_data), SIZE)
         )
-        return block_split, other_data
+        biomes_start = len(other_data) - 0x100
+        unknown = other_data[:biomes_start]  # 16-bit
+        biomes = other_data[biomes_start:]
+        return block_split, unknown, biomes
 
     @property
     def _data_header(self):
@@ -403,17 +407,28 @@ class Entry:
     def __init__(self, header, chunk: Chunk, debug=None) -> None:
         self._header = header
         self._chunk = chunk
-        block_data, unknown_footer = self._chunk[0].data
+        block_data, unknown, biomes = self._chunk[0].data
+        self.test = len(unknown)
         self.blocks = block_data[0]
         self.debug = debug
 
     def __getitem__(self, position: tuple[int, int, int]) -> int:
         x, y, z = position
-        calculated = x * 0x100 + y + z * 0x10
+        position = x * 0x100 + y + z * 0x10
+        # the block data is stored as nibbles
+        data_position = 0x1000 + position // 2
         try:
-            return self.blocks[calculated]
+            block_id = self.blocks[position]
+            block_raw_data = self.blocks[data_position]
         except IndexError:
             raise KeyError("position out of range")
+
+        # extract the correct nibble
+        if position % 2 == 0:
+            block_data = block_raw_data & 0xF
+        else:
+            block_data = block_raw_data >> 4
+        return (block_id, block_data)
 
 
 class World:
@@ -428,8 +443,9 @@ class World:
         # unsigned to signed
         if coordinate >= 1 << (size - 1):
             coordinate -= 1 << size
-        if unknown >= 1 << (16 - size - 1):
-            unknown -= 1 << (16 - size)
+        unknown_size = 16 - size
+        if unknown >= 1 << (unknown_size - 1):
+            unknown -= 1 << unknown_size
         return (unknown, coordinate)
 
     def _reload_data(self) -> None:
@@ -468,7 +484,7 @@ class World:
                 tester = test[slot] = []
             # if slot < 16:
             if slot not in self.cdb.keys():
-                print(f"N {entry}")
+                pass  # print(f"N {entry}")
             else:
                 assert slot in self.cdb.keys()
                 value = entry.subfile
@@ -478,15 +494,15 @@ class World:
                 unknown_x, x = self.parse_bitfield(entry.xBitfield, 13)
                 unknown_z, z = self.parse_bitfield(entry.zBitfield, 11)
                 print(
-                    f"x=({x:d}, {unknown_x:d}, {entry.xBitfield:d}) z=({z:d}, {unknown_z:d}, {entry.zBitfield:d})"
+                    f"x=({x:d}, {unknown_x:d}) z=({z:d}, {unknown_z:d}) slot={slot:d} subfile={entry.subfile:d}"
                 )
                 unknown = unknown_x + unknown_z * 8
-                position = (x, z)
+                position = (x, unknown_x, z)
                 if position in extracted:
                     print(f"duplicate position {position}")
                 if position not in extracted or unknowns[position] < unknown:
                     extracted[position] = Entry(
-                        entry, chunk, (x, z, unknown_x, unknown_z)
+                        entry, chunk, (x, unknown_x, z, unknown_z, slot, entry.subfile)
                     )
                     unknowns[position] = unknown
                 # if position in extracted:
@@ -571,15 +587,23 @@ class IterWorld:
                 raise StopIteration
             self.__blocks_left.clear()
             position, self.__entry = self.__entries_left.pop(0)
-            self.__position = (position[0] * 0x10, position[1] * 0x10)
+            self.__position = (
+                position[0] * 0x10,
+                position[1] * 0x20,
+                position[2] * 0x10,
+            )
             for x in range(0x10):
                 for z in range(0x10):
                     for y in range(0x10):
                         self.__blocks_left.append((x, y, z))
         coordinates = self.__blocks_left.pop(0)
-        offset_x, offset_z = self.__position
+        offset_x, offset_y, offset_z = self.__position
         return (
-            (coordinates[0] + offset_x, coordinates[1], coordinates[2] + offset_z),
+            (
+                coordinates[0] + offset_x,
+                coordinates[1] + offset_y,
+                coordinates[2] + offset_z,
+            ),
             self.__entry.debug,
             self.__entry[coordinates],
         )

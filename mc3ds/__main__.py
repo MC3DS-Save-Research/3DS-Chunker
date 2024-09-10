@@ -48,20 +48,23 @@ def main(
     path: Path, out: Path, blank_world: Path, world_out: Path, delete_out: bool = False
 ) -> None:
     script_path = Path(__file__).parent
-    if out.exists():
-        if delete_out:
-            shutil.rmtree(out)
-        else:
-            print(
-                'already extracted, please move or delete the "out" folder',
-                file=sys.stderr,
-            )
-            sys.exit(1)
+    if out.exists() and not delete_out:
+        print(
+            'already extracted, please move or delete the "out" folder',
+            file=sys.stderr,
+        )
+        sys.exit(1)
 
     if path is None:
         path = Path(input("Enter path to world: "))
     world = World(path)
     print(f"World name: {world.name}")
+    convert(world, blank_world, world_out, delete_out)
+    if 1:
+        sys.exit()
+
+    if out.exists() and delete_out:
+        shutil.rmtree(out)
     out.mkdir()
 
     vdb_out = out / "vdb"
@@ -88,8 +91,6 @@ def main(
             with open(nbt_path, "xb") as subfile_out:
                 subfile_out.write(data.raw)
 
-    convert(world, blank_world, world_out, delete_out)
-    sys.exit()
     cdb_out = out / "cdb"
     cdb_out.mkdir()
     for number, cdb_file in world.cdb:
@@ -99,18 +100,21 @@ def main(
             chunk_path = region_path / f"chunk{index:d}"
             chunk_path.mkdir()
             for subchunk_index, subchunk in chunk:
-                subchunk_path = chunk_path / f"subchunk{subchunk_index:d}"
+                subchunk_path = chunk_path / f"data{subchunk_index:d}"
                 if subchunk_index == 0:
-                    block_data, tail = subchunk.data
+                    block_data, unknown, biomes = subchunk.data
                     for block_index, block in enumerate(block_data):
-                        block_path = chunk_path / f"block{block_index:d}"
-                        with open(block_path, "wb") as block_data_out:
+                        block_path = chunk_path / f"blocks{block_index:d}"
+                        with open(block_path, "xb") as block_data_out:
                             block_data_out.write(block)
-                    tail_path = chunk_path / "blocktail"
-                    with open(tail_path, "wb") as tail_out:
-                        tail_out.write(tail)
+                    unknown_path = chunk_path / "unknown"
+                    biomes_path = chunk_path / "biomes"
+                    with open(unknown_path, "xb") as unknown_out:
+                        unknown_out.write(unknown)
+                    with open(biomes_path, "xb") as biomes_out:
+                        biomes_out.write(biomes)
                 else:
-                    with open(subchunk_path, "wb") as subchunk_out:
+                    with open(subchunk_path, "xb") as subchunk_out:
                         subchunk_out.write(subchunk.raw_decompressed)
         print(f"extracted region {number:d}!")
 

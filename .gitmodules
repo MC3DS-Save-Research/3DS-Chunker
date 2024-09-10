@@ -1,3 +1,6 @@
 [submodule "xnbt"]
 	path = mc3ds/xnbt
 	url = https://github.com/MCPI-Revival/xnbt
+[submodule "mc3ds/minecraft-block-ids"]
+	path = mc3ds/minecraft-block-ids
+	url = https://github.com/MCMrARM/minecraft-block-ids
