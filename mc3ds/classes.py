@@ -180,9 +180,6 @@ class Subchunk:
         self.__header_cache = parser.BlockDataHeader(decompressed)
         data = decompressed[len(self.__header_cache) :]
         SIZE = 0x2800
-        # every 0x100: split
-        # every 0x10: split
-        # each 0x10 changes in the Y coordinate
         calculated = self._data_header.unknownSize * SIZE
         block_data = data[:calculated]
         other_data = data[calculated:]
@@ -402,10 +399,38 @@ class VDBDirectory(DBDirectory):
         return VDBFile(stream)
 
 
+class Entry:
+    def __init__(self, header, chunk: Chunk, debug=None) -> None:
+        self._header = header
+        self._chunk = chunk
+        block_data, unknown_footer = self._chunk[0].data
+        self.blocks = block_data[0]
+        self.debug = debug
+
+    def __getitem__(self, position: tuple[int, int, int]) -> int:
+        x, y, z = position
+        calculated = x * 0x100 + y + z * 0x10
+        try:
+            return self.blocks[calculated]
+        except IndexError:
+            raise KeyError("position out of range")
+
+
 class World:
     def __init__(self, path: str | bytes | os.PathLike) -> None:
         self._path = Path(path)
         self._reload_data()
+
+    @staticmethod
+    def parse_bitfield(bitfield: int, size: int) -> tuple[int, int]:
+        coordinate = bitfield & (1 << size) - 1
+        unknown = bitfield >> size
+        # unsigned to signed
+        if coordinate >= 1 << (size - 1):
+            coordinate -= 1 << size
+        if unknown >= 1 << (16 - size - 1):
+            unknown -= 1 << (16 - size)
+        return (unknown, coordinate)
 
     def _reload_data(self) -> None:
         self._db_path = self._path / "db"
@@ -429,6 +454,7 @@ class World:
             self._index = Index(index_file)
 
         extracted = {}
+        unknowns = {}
         test = {}
         for entry in self._index.entries:
             slot = entry.slot
@@ -442,14 +468,33 @@ class World:
                 tester = test[slot] = []
             # if slot < 16:
             if slot not in self.cdb.keys():
-                # assert slot not in self.cdb.keys()
                 print(f"N {entry}")
             else:
                 assert slot in self.cdb.keys()
                 value = entry.subfile
                 cdb = self.cdb[slot]
                 chunk = self.cdb[slot][entry.subfile]
-                extracted[(entry.x, entry.z)] = chunk
+
+                unknown_x, x = self.parse_bitfield(entry.xBitfield, 13)
+                unknown_z, z = self.parse_bitfield(entry.zBitfield, 11)
+                print(
+                    f"x=({x:d}, {unknown_x:d}, {entry.xBitfield:d}) z=({z:d}, {unknown_z:d}, {entry.zBitfield:d})"
+                )
+                unknown = unknown_x + unknown_z * 8
+                position = (x, z)
+                if position in extracted:
+                    print(f"duplicate position {position}")
+                if position not in extracted or unknowns[position] < unknown:
+                    extracted[position] = Entry(
+                        entry, chunk, (x, z, unknown_x, unknown_z)
+                    )
+                    unknowns[position] = unknown
+                # if position in extracted:
+                #     print(f"duplicate {chunk._header}")
+                #     print(f"with {extracted[position]._header}")
+                # else:
+                #     extracted[position] = chunk
+                continue
                 real_size = chunk[0]._header.decompressedSize // 0x2800
                 important = int.from_bytes(chunk[0].raw_decompressed[:2], "little")
                 print(f"real_size=0x{real_size:X}, important=0x{important:X}")
@@ -468,6 +513,32 @@ class World:
                     tester.append(value)
         self.extracted = extracted
 
+    def __iter__(self):
+        return IterWorld(self)
+
+    def __getitem__(self, position: tuple[int, int, int]) -> int:
+        x, y, z = position
+        chunk_x = x % 0x10
+        chunk_y = y % 0x10
+        chunk_z = z % 0x10
+        entry = self.get_entry((x, y, z))
+        if entry is None:
+            return 0  # air
+        try:
+            block_id = entry[(chunk_x, chunk_y, chunk_z)]
+        except KeyError:
+            return 0  # air
+        return block_id
+
+    def get_entry(self, position: tuple[int, int, int]) -> int:
+        x, y, z = position
+        world_x = x // 0x10
+        world_z = z // 0x10
+        try:
+            return self.extracted[(world_x, world_z)]
+        except KeyError:
+            return None
+
     @property
     def index(self) -> Index:
         return self._index
@@ -484,3 +555,31 @@ class World:
     @property
     def name(self) -> str:
         return self.metadata.get("LevelName")
+
+
+class IterWorld:
+    def __init__(self, world: World) -> None:
+        self._world = world
+        self.__entries_left = list(world.extracted.items())
+        self.__blocks_left = []
+        self.__entry = None
+        self.__position = None
+
+    def __next__(self) -> tuple[tuple[int, int, int], int]:
+        if not self.__blocks_left:
+            if not self.__entries_left:
+                raise StopIteration
+            self.__blocks_left.clear()
+            position, self.__entry = self.__entries_left.pop(0)
+            self.__position = (position[0] * 0x10, position[1] * 0x10)
+            for x in range(0x10):
+                for z in range(0x10):
+                    for y in range(0x10):
+                        self.__blocks_left.append((x, y, z))
+        coordinates = self.__blocks_left.pop(0)
+        offset_x, offset_z = self.__position
+        return (
+            (coordinates[0] + offset_x, coordinates[1], coordinates[2] + offset_z),
+            self.__entry.debug,
+            self.__entry[coordinates],
+        )

@@ -26,11 +26,27 @@ from .convert import convert
     help="Directory for output",
 )
 @click.option(
+    "-b",
+    "--blank-world",
+    type=click.Path(exists=True, file_okay=False, path_type=Path),
+    help="Path to a blank Minecraft Java world",
+    default=Path(__file__).parent.parent / "Blank",
+)
+@click.option(
+    "-w",
+    "--world-out",
+    type=click.Path(file_okay=False, path_type=Path),
+    help="Path to the output world",
+    default=Path(__file__).parent.parent / "World",
+)
+@click.option(
     "--delete-out",
     is_flag=True,
-    help="Permanently delete the out folder and its contents if it exists (make sure it's the right folder!)",
+    help="Permanently delete the output and world folders, and their contents (make sure they're the right folder!)",
 )
-def main(path: Path, out: Path, delete_out: bool = False) -> None:
+def main(
+    path: Path, out: Path, blank_world: Path, world_out: Path, delete_out: bool = False
+) -> None:
     script_path = Path(__file__).parent
     if out.exists():
         if delete_out:
@@ -72,6 +88,8 @@ def main(path: Path, out: Path, delete_out: bool = False) -> None:
             with open(nbt_path, "xb") as subfile_out:
                 subfile_out.write(data.raw)
 
+    convert(world, blank_world, world_out, delete_out)
+    sys.exit()
     cdb_out = out / "cdb"
     cdb_out.mkdir()
     for number, cdb_file in world.cdb:
@@ -85,9 +103,6 @@ def main(path: Path, out: Path, delete_out: bool = False) -> None:
                 if subchunk_index == 0:
                     block_data, tail = subchunk.data
                     for block_index, block in enumerate(block_data):
-                        print(world.extracted)
-                        convert(world.extracted)
-                        sys.exit()
                         block_path = chunk_path / f"block{block_index:d}"
                         with open(block_path, "wb") as block_data_out:
                             block_data_out.write(block)
