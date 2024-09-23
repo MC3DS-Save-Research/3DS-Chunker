@@ -1,0 +1,36 @@
+[project]
+name = "3DS-Chunker"
+dynamic = ["version"]
+authors = [
+  {name="Anonymous941", email="anonymous941@none.invalid"},
+  {name="Cracko298", email="cracko298@none.invalid"},
+  {name="DexrnZacAttack", email="dexrnzacattack@none.invalid"},
+  {name="Evocated", email="evocated@none.invalid"},
+  {name="Offroaders123", email="offroaders123@none.invalid"},
+]
+description = "A small example package"
+readme = "README.md"
+requires-python = ">=3.10"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+dependencies = [
+    "dissect.cstruct",
+    "click",
+    "nbtlib",
+    "git+https://github.com/Anonymous941/PyAnvilEditor",
+]
+
+[project.urls]
+Homepage = "https://github.com/Anonymous941/3DS-Chunker"
+Issues = "https://github.com/Anonymous941/3DS-Chunker/issues"
+
+[project.scripts]
+3dschunker = "mc3ds:main"
+ls3ds = "mc3ds.ls3ds:main"
+
+[tool.setuptools]
+packages = ["mc3ds"]
+py-modules = []

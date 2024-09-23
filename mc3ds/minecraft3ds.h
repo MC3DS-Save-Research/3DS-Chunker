@@ -7,14 +7,24 @@ struct FileHeader {
     uint16 something0;
     uint16 something1;
     uint32 subfileCount; // total number of subfiles
-    uint32 unknown0;
+    uint32 constant0; // always 0x14, file header size?
     uint32 subfileSize; // size of each subfile
-    uint32 unknown1;
+    uint32 unknown0; // 0x4 for CDB, 0x100 for VDB
 };
 
 struct SubfileHeader {
     uint32 magic;
-    uint8 unknown0[8];
+};
+
+struct Position {
+    uint32 x : 14; // signed
+    uint32 z : 14; // signed
+    uint32 dimension : 4; // unsigned
+};
+
+struct ChunkParameters {
+    int8 unknown0;
+    int8 unknown1;
 };
 
 struct ChunkSection {
@@ -25,13 +35,16 @@ struct ChunkSection {
 };
 
 struct ChunkHeader {
-    int16 unknown0;
-    int16 unknown1;
+    Position position;
+    ChunkParameters parameters;
+    uint16 unknown0;
+    uint16 unknown1;
+    uint16 unknown2;
     ChunkSection sections[6];
 };
 
 struct VDBHeader {
-    // hack to get around dissect.cstruct's limitations
+    uint8 parameters[8];
     uint32 magic;
     uint8 nameSize;
     uint8 list[7];
@@ -47,24 +60,12 @@ struct IndexPointer {
 };
 
 struct CDBEntry {
-    /*
-    these are bitfields, but I can't use cstruct's built-in bitfield because it gets the endianness wrong
-    struct xBitfield {
-        unknown : 3;
-        signed x : 13;
-    }
-    struct zBitfield {
-        unknown : 5;
-        signed z : 11;
-    }
-    */
-    uint16 xBitfield;
-    uint16 zBitfield;
+    Position position;
     uint16 slot; // slot (corresponds to a CDB file), unless it's <16?
     uint16 subfile; // subfile within the slot
-    uint16 constant0; // always 0x20FF, and the block number is divisible by that
+    uint16 constant0; // always 0x20FF
     uint16 constant1; // always 0xA
-    uint16 unknown0; // usually 0x1, sometimes 0x2 or 0x3, and on large worlds as high as 0x6e
+    ChunkParameters parameters; // also in the chunk; usually 0x1, sometimes 0x2 or 0x3, and on large worlds as high as 0x6e
     uint16 constant2; // always 0x8000, subfile count?
 };
 
@@ -80,5 +81,6 @@ struct Index {
 };
 
 struct BlockDataHeader {
-    uint16 unknownSize;
-}
+    uint8 subchunks;
+    uint8 unknown;
+};

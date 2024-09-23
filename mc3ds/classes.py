@@ -6,12 +6,9 @@ from pathlib import Path
 import zlib
 import re
 
-try:
-    from nbt import NBT
-    from parser import parser
-except ImportError:
-    from .nbt import NBT
-    from .parser import parser
+from .nbt import NBT
+from .parser import parser
+
 
 def process_key(key: int, length: int | None = None) -> int:
     if length is not None and key > length - 1:
@@ -25,6 +22,21 @@ def process_key(key: int, length: int | None = None) -> int:
             if key < 0:
                 raise IndexError("index out of range")
     return key
+
+
+def parse_position(position) -> tuple[int, int, int]:
+    x, z, dimension = position.x, position.z, position.dimension
+    assert 0 <= dimension <= 2, f"invalid dimension {dimension:d}"
+    # convert unsigned to signed
+    signed_size = 1 << 12
+    unsigned_size = 1 << 13
+    if x > signed_size:
+        x -= unsigned_size
+    if z > signed_size:
+        z -= unsigned_size
+    # combined = entry.position  # entry.xBitfield | (entry.zBitfield << 16)
+    # position = self._parse_position(combined)
+    return (x, z, dimension)
 
 
 class BaseParser:
@@ -80,7 +92,7 @@ class Subfile(BaseParser):
     def raw(self) -> bytes | None:
         if self.filler:
             return None
-        self._seek(self._header.size)
+        self._seek(len(self._header))
         content = self._stream.read(self.size - self._header.size)
         return content
 
@@ -112,6 +124,7 @@ class IterDB:
 class DBFile(BaseParser):
     def _reload_data(self) -> None:
         self._header = parser.FileHeader(self._stream)
+        assert self._header.constant0 == 0x14
 
     @property
     def something(self) -> tuple[int]:
@@ -178,21 +191,22 @@ class Subchunk:
         return decompressed
 
     @property
-    def data(self) -> tuple[tuple[bytes], bytes]:
+    def data(self) -> tuple[tuple[bytes], bytes, tuple[int]]:
         # https://minecraft.wiki/w/Bedrock_Edition_level_format/History
         decompressed = self.raw_decompressed
         self.__header_cache = parser.BlockDataHeader(decompressed)
         data = decompressed[len(self.__header_cache) :]
-        SIZE = 0x2800
-        calculated = self._data_header.unknownSize * SIZE
+        SUBCHUNK_SIZE = 0x2800
+        calculated = self._data_header.subchunks * SUBCHUNK_SIZE
         block_data = data[:calculated]
         other_data = data[calculated:]
         block_split = tuple(
-            block_data[i : i + SIZE] for i in range(0, len(block_data), SIZE)
+            block_data[i : i + SUBCHUNK_SIZE]
+            for i in range(0, len(block_data), SUBCHUNK_SIZE)
         )
         biomes_start = len(other_data) - 0x100
         unknown = other_data[:biomes_start]  # 16-bit
-        biomes = other_data[biomes_start:]
+        biomes = tuple(other_data[biomes_start:])
         return block_split, unknown, biomes
 
     @property
@@ -203,7 +217,7 @@ class Subchunk:
 
     @property
     def size(self) -> int:
-        return self._header.unknownSize
+        return self._header.subchunks
 
 
 class IterChunk:
@@ -231,6 +245,18 @@ class Chunk:
     def _reload_data(self) -> None:
         self._raw = self._subfile.raw
         self._header = parser.ChunkHeader(self._raw)
+
+    @property
+    def position(self) -> tuple[int, int, int]:
+        return parse_position(self._header.position)
+
+    @property
+    def unknown_parameter_0(self) -> int:
+        return self._header.parameters.unknown0
+
+    @property
+    def unknown_parameter_1(self) -> int:
+        return self._header.parameters.unknown1
 
     @property
     def unknown0(self) -> int:
@@ -274,7 +300,7 @@ class Chunk:
             return None
 
         subchunk_header = self._header.sections[key]
-        should_be = start + parser.SubfileHeader.size
+        should_be = start + len(parser.SubfileHeader)
         if subchunk_header.position != should_be:
             raise ValueError("invalid position")
         subchunk = Subchunk(subchunk_header, self._raw[start:])
@@ -318,11 +344,19 @@ class VDBData:
 
 
 class VDBFile(DBFile):
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        assert self._header.unknown0 == 0x100
+
     def _parse(self, subfile: Subfile) -> VDBData:
         return VDBData(subfile)
 
 
 class CDBFile(DBFile):
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        assert self._header.unknown0 == 0x4
+
     def _parse(self, subfile: Subfile) -> Chunk:
         return Chunk(subfile)
 
@@ -391,7 +425,7 @@ class DBDirectory:
 class CDBDirectory(DBDirectory):
     @property
     def file_expression(self):
-        return re.compile(R"slt([1-9]\d*)\.cdb")
+        return re.compile(r"slt(0|(?:[1-9]\d*))\.cdb")
 
     def _process(self, stream: BytesIO) -> CDBFile:
         return CDBFile(stream)
@@ -400,7 +434,7 @@ class CDBDirectory(DBDirectory):
 class VDBDirectory(DBDirectory):
     @property
     def file_expression(self):
-        return re.compile(R"slt([1-9]\d*)\.vdb")
+        return re.compile(r"slt(0|(?:[1-9]\d*))\.vdb")
 
     def _process(self, stream: BytesIO) -> VDBFile:
         return VDBFile(stream)
@@ -411,20 +445,31 @@ class Entry:
         self._header = header
         self._chunk = chunk
         block_data, unknown, biomes = self._chunk[0].data
-        self.test = len(unknown)
-        self.blocks = block_data[0]
+        self.blocks = block_data
+        self.unknown = unknown
         self.debug = debug
 
     def __getitem__(self, position: tuple[int, int, int]) -> int:
         x, y, z = position
+        subchunk_index, subchunk_y = y // 0x10, y % 0x10
+        if subchunk_index > 8:
+            raise KeyError("position out of range")
+
+        try:
+            subchunk = self.blocks[subchunk_index]
+        except KeyError:
+            return (0, 0)
+        if len(subchunk) != 0x2800:
+            print(f"bad subchunk length {len(subchunk):d}!")
+            return (0, 0)
         position = x * 0x100 + y + z * 0x10
         # the block data is stored as nibbles
         data_position = 0x1000 + position // 2
         try:
-            block_id = self.blocks[position]
-            block_raw_data = self.blocks[data_position]
+            block_id = subchunk[position]
+            block_raw_data = subchunk[data_position]
         except IndexError:
-            raise KeyError("position out of range")
+            raise KeyError("position out of range") from None
 
         # extract the correct nibble
         if position % 2 == 0:
@@ -433,23 +478,15 @@ class Entry:
             block_data = block_raw_data >> 4
         return (block_id, block_data)
 
+    @property
+    def subchunk_count(self) -> int:
+        return len(self.blocks)
+
 
 class World:
     def __init__(self, path: str | bytes | os.PathLike) -> None:
         self._path = Path(path)
         self._reload_data()
-
-    @staticmethod
-    def parse_bitfield(bitfield: int, size: int) -> tuple[int, int]:
-        coordinate = bitfield & (1 << size) - 1
-        unknown = bitfield >> size
-        # unsigned to signed
-        if coordinate >= 1 << (size - 1):
-            coordinate -= 1 << size
-        unknown_size = 16 - size
-        if unknown >= 1 << (unknown_size - 1):
-            unknown -= 1 << unknown_size
-        return (unknown, coordinate)
 
     def _reload_data(self) -> None:
         self._db_path = self._path / "db"
@@ -472,65 +509,35 @@ class World:
         with open(self._cdb_path / "newindex.cdb", "rb") as index_file:
             self._index = Index(index_file)
 
-        extracted = {}
-        unknowns = {}
-        test = {}
+        entries = {}
         for entry in self._index.entries:
             slot = entry.slot
             assert entry.constant0 == 0x20FF
-            assert entry.constant1 == 0xA
+            if entry.constant1 != 0xA:
+                print(f"!!! not constant 0x{entry.constant1:X} !!!")
             assert entry.constant2 == 0x8000
-            # testing stuff
-            try:
-                tester = test[slot]
-            except KeyError:
-                tester = test[slot] = []
-            # if slot < 16:
             if slot not in self.cdb.keys():
                 pass  # print(f"N {entry}")
             else:
                 assert slot in self.cdb.keys()
-                value = entry.subfile
-                cdb = self.cdb[slot]
                 chunk = self.cdb[slot][entry.subfile]
 
-                unknown_x, x = self.parse_bitfield(entry.xBitfield, 13)
-                unknown_z, z = self.parse_bitfield(entry.zBitfield, 11)
-                print(
-                    f"x=({x:d}, {unknown_x:d}) z=({z:d}, {unknown_z:d}) slot={slot:d} subfile={entry.subfile:d}"
-                )
-                unknown = unknown_x + unknown_z * 8
-                position = (x, unknown_x, z)
-                if position in extracted:
-                    print(f"duplicate position {position}")
-                if position not in extracted or unknowns[position] < unknown:
-                    extracted[position] = Entry(
-                        entry, chunk, (x, unknown_x, z, unknown_z, slot, entry.subfile)
-                    )
-                    unknowns[position] = unknown
-                # if position in extracted:
-                #     print(f"duplicate {chunk._header}")
-                #     print(f"with {extracted[position]._header}")
-                # else:
-                #     extracted[position] = chunk
-                continue
-                real_size = chunk[0]._header.decompressedSize // 0x2800
-                important = int.from_bytes(chunk[0].raw_decompressed[:2], "little")
-                print(f"real_size=0x{real_size:X}, important=0x{important:X}")
-                # print((entry.x, entry.z))
-                print(entry)
-                print(cdb._header)
-                print(chunk._header)
-                # if entry.unknown4 > 0x10:
-                #     print(f"{entry.slot:d}, {entry.subfile:d}")
-                #     input("-")
-                # else:
-                #     print("-")
-                if value in tester:
-                    input("ERROR")
+                position = parse_position(entry.position)
+                assert position == chunk.position
+                unknown0 = entry.parameters.unknown0
+                unknown1 = entry.parameters.unknown1
+                assert unknown0 == chunk.unknown_parameter_0
+                assert unknown1 == chunk.unknown_parameter_1
+
+                data_header = parser.BlockDataHeader(chunk[0].raw_decompressed)
+                subchunks = data_header.subchunks
+                debug = f"unknown0={unknown0:d} unknown1={unknown1:d} {repr(position)} subchunks={subchunks:d} slot={slot:d} subfile={entry.subfile:d}"
+                print(debug)
+                if position in entries:
+                    raise ValueError(f"duplicate position {position}")
                 else:
-                    tester.append(value)
-        self.extracted = extracted
+                    entries[position] = Entry(entry, chunk, debug)
+        self.entries = entries
 
     def __iter__(self):
         return IterWorld(self)
@@ -554,7 +561,7 @@ class World:
         world_x = x // 0x10
         world_z = z // 0x10
         try:
-            return self.extracted[(world_x, world_z)]
+            return self.entries[(world_x, world_z)]
         except KeyError:
             return None
 
@@ -579,34 +586,31 @@ class World:
 class IterWorld:
     def __init__(self, world: World) -> None:
         self._world = world
-        self.__entries_left = list(world.extracted.items())
+        self.__entries_left = list(world.entries.items())
         self.__blocks_left = []
         self.__entry = None
         self.__position = None
 
     def __next__(self) -> tuple[tuple[int, int, int], int]:
-        if not self.__blocks_left:
+        while not self.__blocks_left:
             if not self.__entries_left:
                 raise StopIteration
             self.__blocks_left.clear()
             position, self.__entry = self.__entries_left.pop(0)
-            self.__position = (
-                position[0] * 0x10,
-                position[1] * 0x20,
-                position[2] * 0x10,
-            )
+            self.__position = (position[0] * 0x10, position[1] * 0x10, position[2])
             for x in range(0x10):
                 for z in range(0x10):
-                    for y in range(0x10):
+                    for y in range(0x10 * self.__entry.subchunk_count):
                         self.__blocks_left.append((x, y, z))
         coordinates = self.__blocks_left.pop(0)
-        offset_x, offset_y, offset_z = self.__position
+        offset_x, offset_z, dimension = self.__position
         return (
             (
                 coordinates[0] + offset_x,
-                coordinates[1] + offset_y,
+                coordinates[1],
                 coordinates[2] + offset_z,
             ),
-            self.__entry.debug,
+            dimension,
+            self.__entry,
             self.__entry[coordinates],
         )

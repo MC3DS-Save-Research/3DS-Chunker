@@ -9,10 +9,8 @@ import nbtlib
 from nbtlib.tag import String
 import json
 
-try:
-    import classes
-except ImportError:
-    from . import classes
+from . import classes
+
 
 def convert(
     world_3ds: classes.World,
@@ -20,6 +18,7 @@ def convert(
     world_out: Path,
     delete_out: bool = False,
 ) -> None:
+    print(world_3ds.vdb[world_3ds.vdb.keys()[0]]._header)
     if world_out.exists():
         if delete_out:
             shutil.rmtree(world_out)
@@ -28,71 +27,107 @@ def convert(
     shutil.copytree(blank_world, world_out)
     with nbtlib.load(world_out / "level.dat") as level:
         level["Data"]["LevelName"] = String(world_3ds.name)
-    extracted = world_3ds.extracted
 
+    converted = {}
     block_ids = {}
     block_states = {}
     # read the JSON files containing MCPE block IDs
     with open(
-        Path(__file__).parent / "minecraft-block-ids" / "blocks_274.json"
+        Path(__file__).parent / "data" / "minecraft-block-ids" / "blocks_274.json"
     ) as blocks_file:
         raw_blocks = json.load(blocks_file)
+    with open(Path(__file__).parent / "data" / "blocksB2J.json") as convert_file:
+        convert = json.load(convert_file)
+    for old, new in convert.items():
+        # remove the data
+        old_position = old.find("[")
+        if old_position == -1:
+            continue
+        new_position = new.find("[")
+        if new_position == -1:
+            continue
+        old_name = old[:old_position]
+        if old_name in converted:
+            pass
+        else:
+            converted[old_name] = new[:new_position]
     for raw_block in raw_blocks:
         key = (raw_block["id"], raw_block["data"])
-        name = raw_block["name"]
-        if name == "minecraft:grass":
-            name = "minecraft:grass_block"
-        elif name == "minecraft:tallgrass":
-            name = "minecraft:grass"
-        elif name == "minecraft:portal":
-            name = "minecraft:nether_portal"
+        old_name = raw_block["name"]
+        try:
+            name = converted[old_name]
+        except KeyError:
+            # ignore Bedrock / Education edition exclusive blocks
+            continue
         block_ids[key] = name
         # cache the block states for better performance
         block_states[key] = BlockState(name, {})
     air = block_states[(0, 0)]
-
+    glass = block_states[(20, 0)]
+    done = set()
+    nether = {}
+    end = {}
+    print("Placing blocks")
     with World(world_out) as world:
         canvas = Canvas(world)
 
-        DEFAULT = BlockState("minecraft:stone", {})
-        # mapped = {}
-        # unmapped = {
-        #     0: "air",
-        #     1: "stone",
-        #     2: "grass_block",
-        #     3: "dirt",
-        #     4: "cobblestone",
-        #     5: "oak_planks",
-        #     7: "bedrock",
-        #     8: "oak_leaves",
-        #     11: "lava",
-        #     12: "sand",
-        #     35: "white_wool",
-        #     47: "bookshelf",
-        #     49: "obsidian",
-        #     50: "torch",
-        #     57: "diamond_block",
-        #     86: "pumpkin",
-        #     87: "netherrack",
-        #     90: "portal",
-        #     153: "quartz_ore",
-        # }
-        # for item_id, name in unmapped.items():
-        #     mapped[item_id] = BlockState(f"minecraft:{name}", {})
-
-        """
-        (252,5,4): (15,0,1,1)
-        """
-
-        for position, debug, block_id in world_3ds:
-            new_block = block_states[block_id]
+        for position, dimension, entry, block_id in world_3ds:
+            debug = entry.debug
+            try:
+                new_block = block_states[block_id]
+            except KeyError:
+                if block_id[0] not in (0, 7, 73):
+                    print(f"unknown block {block_id} debug {debug}")
+                new_block = air
+            if (
+                False
+                and entry._header.unknownChunkParameter == 0x1
+                and new_block == air
+            ):
+                new_block = glass
             # position = (position[0], position[1] + debug[2] + debug[3] * 8, position[2])
-            if new_block.name in ("minecraft:wool", "minecraft:sand"):
+            if new_block.name in (
+                "minecraft:nether_portal",
+                "minecraft:beacon",
+                "minecraft:diamond_block",
+            ):
                 block_name = block_ids.get(block_id, "unknown")
-                print(f"{block_name} {block_id} at {position} debug {debug}")
+                print(
+                    f"{block_name} {block_id} at {position} dimension {dimension} debug {debug}"
+                )
+            unique_position = (position, dimension)
+            if unique_position in done:
+                raise ValueError("blocks overlap")
+            else:
+                done.add(unique_position)
             if new_block != air:
+                if dimension == 0:
+                    try:
+                        world.get_block(position).set_state(new_block)
+                    except Exception as exception:
+                        print(f"failed to set block at {position}")
+                        raise exception from None
+                elif dimension == 1:
+                    nether[position] = new_block
+                elif dimension == 2:
+                    end[position] = new_block
+                else:
+                    raise ValueError(f"invalid dimension {dimension:d}")
+    if nether:
+        print("Placing Nether blocks")
+        with World(world_out, dimension=1) as world:
+            for position, block in nether.items():
                 try:
-                    world.get_block(position).set_state(new_block)
+                    world.get_block(position).set_state(block)
                 except Exception as exception:
-                    pass  # print(position)
+                    print(f"failed to set block at Nether {position}")
+                    raise exception from None
+    if end:
+        print("Placing End blocks")
+        with World(world_out, dimension=2) as world:
+            for position, block in end.items():
+                try:
+                    world.get_block(position).set_state(block)
+                except Exception as exception:
+                    print(f"failed to set block at End {position}")
                     # raise exception from None

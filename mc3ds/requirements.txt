@@ -1,4 +1,4 @@
 dissect.cstruct
 click
 nbtlib
-pyanvileditor
+git+https://github.com/Anonymous941/PyAnvilEditor

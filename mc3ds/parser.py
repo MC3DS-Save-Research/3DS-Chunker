@@ -13,6 +13,6 @@ def size_check(struct, expected_size, name):
 
 
 size_check(parser.FileHeader, 0x14, "file header")
-size_check(parser.SubfileHeader, 0xC, "subfile header")
+size_check(parser.SubfileHeader, 0x4, "subfile header")
 size_check(parser.ChunkSection, 0x10, "chunk section")
-size_check(parser.ChunkHeader, 0x64, "chunk header")
+size_check(parser.ChunkHeader, 0x6C, "chunk header")
