@@ -20,12 +20,12 @@ dependencies = [
     "dissect.cstruct",
     "click",
     "nbtlib",
-    "git+https://github.com/Anonymous941/PyAnvilEditor",
+    "git+https://github.com/MC3DS-Save-Research/PyAnvilEditor",
 ]
 
 [project.urls]
-Homepage = "https://github.com/Anonymous941/3DS-Chunker"
-Issues = "https://github.com/Anonymous941/3DS-Chunker/issues"
+Homepage = "https://github.com/MC3DS-Save-Research/3DS-Chunker"
+Issues = "https://github.com/MC3DS-Save-Research/3DS-Chunker/issues"
 
 [project.scripts]
 3dschunker = "mc3ds:main"
