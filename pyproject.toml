@@ -1,5 +1,5 @@
 [project]
-name = "3DS-Chunker"
+name = "mc3ds"
 dynamic = ["version"]
 authors = [
   {name="Anonymous941", email="anonymous941@none.invalid"},
@@ -33,4 +33,3 @@ ls3ds = "mc3ds.ls3ds:main"
 
 [tool.setuptools]
 packages = ["mc3ds"]
-py-modules = []
