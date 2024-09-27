@@ -20,7 +20,7 @@ dependencies = [
     "dissect.cstruct",
     "click",
     "nbtlib",
-    "git+https://github.com/MC3DS-Save-Research/PyAnvilEditor",
+    "pyanvileditor@git+https://github.com/MC3DS-Save-Research/PyAnvilEditor",
 ]
 
 [project.urls]

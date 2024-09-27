@@ -87,9 +87,12 @@ def convert(
                 new_block = glass
             # position = (position[0], position[1] + debug[2] + debug[3] * 8, position[2])
             if new_block.name in (
-                "minecraft:nether_portal",
+                # "minecraft:nether_portal",
                 "minecraft:beacon",
+                "minecraft:emerald_block",
                 "minecraft:diamond_block",
+                "minecraft:gold_block",
+                "minecraft:iron_block",
             ):
                 block_name = block_ids.get(block_id, "unknown")
                 print(
@@ -129,5 +132,6 @@ def convert(
                 try:
                     world.get_block(position).set_state(block)
                 except Exception as exception:
-                    print(f"failed to set block at End {position}")
+                    pass
+                    # print(f"failed to set block at End {position}")
                     # raise exception from None

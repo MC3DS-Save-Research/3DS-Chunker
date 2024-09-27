@@ -70,12 +70,12 @@ struct CDBEntry {
 };
 
 struct Index {
-    uint32 unknown0; // always 0x2
+    uint32 constant0; // always 0x2
     uint32 entryCount;
-    uint32 unknown1;
+    uint32 unknown0;
     uint32 entrySize;
     uint32 pointerCount;
-    uint32 unknown2;
+    uint32 constant1;
     IndexPointer pointers[pointerCount];
     CDBEntry entries[entryCount];
 };

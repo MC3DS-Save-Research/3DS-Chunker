@@ -56,6 +56,8 @@ class Index(BaseParser):
     def _reload_data(self) -> None:
         self._seek(0)
         self._data = parser.Index(self._stream)
+        assert self._data.constant0 == 0x2
+        # assert self._data.constant1 == 0x80
 
     @property
     def pointers(self):
@@ -169,7 +171,7 @@ class Subchunk:
     def __init__(self, header, compressed: bytes) -> None:
         self._header = header
         self._compressed = compressed
-        self.__size_cache = None
+        self.__header_cache = None
 
     @property
     def compressed(self) -> bytes:
@@ -193,9 +195,7 @@ class Subchunk:
     @property
     def data(self) -> tuple[tuple[bytes], bytes, tuple[int]]:
         # https://minecraft.wiki/w/Bedrock_Edition_level_format/History
-        decompressed = self.raw_decompressed
-        self.__header_cache = parser.BlockDataHeader(decompressed)
-        data = decompressed[len(self.__header_cache) :]
+        data = self.raw_decompressed[len(self._data_header) :]
         SUBCHUNK_SIZE = 0x2800
         calculated = self._data_header.subchunks * SUBCHUNK_SIZE
         block_data = data[:calculated]
@@ -206,6 +206,18 @@ class Subchunk:
         )
         biomes_start = len(other_data) - 0x100
         unknown = other_data[:biomes_start]  # 16-bit
+        # print(
+        #     f"unknownlength={len(unknown):d} subchunks={self._data_header.subchunks:d}"
+        # )
+        unknown_reader = BytesIO(unknown[: len(unknown) // 2 * 2])
+        while False:  # TODO add this testing stuff back
+            byte_time = unknown_reader.read(2)
+            if not byte_time:
+                break
+            one = byte_time[0]
+            two = byte_time[1]
+            if one != 4:
+                print(f"byted 0x{one:X} 0x{two:X}")
         biomes = tuple(other_data[biomes_start:])
         return block_split, unknown, biomes
 
@@ -217,7 +229,7 @@ class Subchunk:
 
     @property
     def size(self) -> int:
-        return self._header.subchunks
+        return self._data_header.subchunks
 
 
 class IterChunk:
@@ -528,10 +540,13 @@ class World:
                 unknown1 = entry.parameters.unknown1
                 assert unknown0 == chunk.unknown_parameter_0
                 assert unknown1 == chunk.unknown_parameter_1
+                chunk0 = chunk._header.unknown0
+                chunk1 = chunk._header.unknown1
+                chunk2 = chunk._header.unknown2
 
                 data_header = parser.BlockDataHeader(chunk[0].raw_decompressed)
                 subchunks = data_header.subchunks
-                debug = f"unknown0={unknown0:d} unknown1={unknown1:d} {repr(position)} subchunks={subchunks:d} slot={slot:d} subfile={entry.subfile:d}"
+                debug = f"unknown0={unknown0:d} unknown1={unknown1:d} chunk0={chunk0:d} chunk1={chunk1:d} chunk2={chunk2:d} position={repr(position)} subchunks={subchunks:d} slot={slot:d} subfile={entry.subfile:d}"
                 print(debug)
                 if position in entries:
                     raise ValueError(f"duplicate position {position}")
