@@ -1,6 +1,6 @@
 from typing import Any
 
-from .xnbt.xnbt import XNBT
+from .xnbt import XNBT
 
 BEDROCK_HEADER_SIZE: int = 0x8
 
