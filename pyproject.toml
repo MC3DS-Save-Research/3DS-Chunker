@@ -32,4 +32,4 @@ Issues = "https://github.com/MC3DS-Save-Research/3DS-Chunker/issues"
 ls3ds = "mc3ds.ls3ds:main"
 
 [tool.setuptools]
-packages = ["mc3ds"]
+package-dir = {"mc3ds" = "mc3ds"}
