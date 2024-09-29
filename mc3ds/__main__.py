@@ -41,7 +41,7 @@ from .convert import convert
     "--extract",
     "mode",
     flag_value="extract",
-    help="Extract data into seperate files for analysis (for developers)",
+    help="Extract data into separate files for analysis (for developers)",
 )
 @click.option(
     "-b",
@@ -125,89 +125,17 @@ def main(
                 with open(nbt_path, "xb") as subfile_out:
                     subfile_out.write(data.raw)
 
-        from collections import defaultdict
-
         cdb_out = out / "cdb"
         cdb_out.mkdir()
-        stuff = defaultdict(dict)
-        eliminated = []
         for number, cdb_file in world.cdb:
             region_path = cdb_out / f"region{number:d}"
             region_path.mkdir()
             for index, chunk in cdb_file:
                 chunk_path = region_path / f"chunk{index:d}"
                 chunk_path.mkdir()
-                with open(chunk_path / "parameters.txt", "x") as parameters_out:
-                    parameters_out.write(
-                        " ".join(
-                            [f"${parameter:02X}" for parameter in chunk.parameters]
-                        )
-                    )
 
-                # trying to find where the dimension is
-                import textwrap
-
-                feed_numbers = chunk.parameters + [
-                    chunk.unknown0,
-                    chunk.unknown1,
-                    chunk.position[2],
-                ]
-                # feed_numbers = textwrap.wrap(f"{chunk.unknown1:016b}", 1)
                 subchunks, unknown, biomes = chunk[0].data
-                overworld = False
-                nether = False
-                end = False
-                for subchunk in subchunks:
-                    for block in subchunk[:0x1000]:
-                        if block == 2:
-                            overworld = True
-                        elif block == 87:
-                            nether = True
-                        elif block == 121:
-                            end = True
-                assert overworld + nether + end <= 1
-                if overworld:
-                    dimension = "overworld"
-                elif nether:
-                    dimension = "nether"
-                elif end:
-                    dimension = "end"
-                else:
-                    dimension = None
-                if dimension is not None:
-                    stuffed = stuff[dimension]
-                    wrong = []
-                    for the_dimension, value in stuff.items():
-                        if the_dimension != dimension:
-                            wrong.append(value)
-
-                    for index, numbered in enumerate(feed_numbers):
-                        try:
-                            new = stuffed[index]
-                        except KeyError:
-                            stuffed[index] = new = set()
-                        all_wrong = set()
-                        for wronged in wrong:
-                            try:
-                                all_wrong |= wronged[index]
-                            except KeyError:
-                                pass
-                        new.add(numbered)
-                        if numbered in all_wrong:
-                            eliminated.append(index)
-                print(f"{dimension} {chunk.position[1]:04b}")
-                if (
-                    chunk.unknown0 != 3
-                    or chunk.parameters[1]
-                    or chunk.parameters[2]
-                    or chunk.parameters[3]
-                ):
-                    input(chunk.parameters)
-                match_me = chunk.parameters[1]
-                match = False
                 for subchunk_index, subchunk in chunk:
-                    if subchunk_index == match_me:
-                        match = True
                     subchunk_path = chunk_path / f"data{subchunk_index:d}"
                     if subchunk_index == 0:
                         block_data, unknown, biomes = subchunk.data
@@ -224,17 +152,7 @@ def main(
                     else:
                         with open(subchunk_path, "xb") as subchunk_out:
                             subchunk_out.write(subchunk.raw_decompressed)
-                if match:
-                    pass  # print(f"match {match_me:d}")
-                else:
-                    print(f"no match {match_me:d}")
             print(f"extracted region {number:d}!")
-        print(stuff)
-        frequency = defaultdict(int)
-        for e in eliminated:
-            frequency[e] += 1
-        print(eliminated)
-        print(frequency)
 
 
 if __name__ == "__main__":

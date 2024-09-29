@@ -9,6 +9,8 @@ import re
 from .nbt import NBT
 from .parser import parser
 
+RAW_SUBCHUNK_SIZE = 0x2801
+
 
 def process_key(key: int, length: int | None = None) -> int:
     if length is not None and key > length - 1:
@@ -193,31 +195,27 @@ class Subchunk:
         return decompressed
 
     @property
-    def data(self) -> tuple[tuple[bytes], bytes, tuple[int]]:
+    def data(self) -> tuple[tuple[tuple[bytes]], bytes, tuple[int]]:
         # https://minecraft.wiki/w/Bedrock_Edition_level_format/History
         data = self.raw_decompressed[len(self._data_header) :]
-        SUBCHUNK_SIZE = 0x2800
-        calculated = self._data_header.subchunks * SUBCHUNK_SIZE
+        calculated = self._data_header.subchunks * RAW_SUBCHUNK_SIZE
+        # if self._data_header.subchunks > 1:
+        #     with open("../test.bin", "wb") as test:
+        #         test.write(self.raw_decompressed)
+        #     input("done")
         block_data = data[:calculated]
         other_data = data[calculated:]
         block_split = tuple(
-            block_data[i : i + SUBCHUNK_SIZE]
-            for i in range(0, len(block_data), SUBCHUNK_SIZE)
+            data[i * RAW_SUBCHUNK_SIZE : (i + 1) * RAW_SUBCHUNK_SIZE]
+            for i in range(0, self._data_header.subchunks)
         )
+        assert len(b"".join(block_split)) == calculated
+        assert len(b"".join(block_split)) == len(
+            self.raw_decompressed[: len(b"".join(block_split))]
+        )
+        assert b"".join(block_split) == data[: len(b"".join(block_split))]
         biomes_start = len(other_data) - 0x100
         unknown = other_data[:biomes_start]  # 16-bit
-        # print(
-        #     f"unknownlength={len(unknown):d} subchunks={self._data_header.subchunks:d}"
-        # )
-        unknown_reader = BytesIO(unknown[: len(unknown) // 2 * 2])
-        while False:  # TODO add this testing stuff back
-            byte_time = unknown_reader.read(2)
-            if not byte_time:
-                break
-            one = byte_time[0]
-            two = byte_time[1]
-            if one != 4:
-                print(f"byted 0x{one:X} 0x{two:X}")
         biomes = tuple(other_data[biomes_start:])
         return block_split, unknown, biomes
 
@@ -463,7 +461,7 @@ class Entry:
 
     def __getitem__(self, position: tuple[int, int, int]) -> int:
         x, y, z = position
-        subchunk_index, subchunk_y = y // 0x10, y % 0x10
+        subchunk_index, subchunk_y = y // 16, y % 16
         if subchunk_index > 8:
             raise KeyError("position out of range")
 
@@ -471,12 +469,14 @@ class Entry:
             subchunk = self.blocks[subchunk_index]
         except KeyError:
             return (0, 0)
-        if len(subchunk) != 0x2800:
+        if len(subchunk) != RAW_SUBCHUNK_SIZE:
             print(f"bad subchunk length {len(subchunk):d}!")
             return (0, 0)
-        position = x * 0x100 + y + z * 0x10
+        position = x * (16 * 16) + subchunk_y + z * 16
+        assert position < 0x1000
         # the block data is stored as nibbles
         data_position = 0x1000 + position // 2
+        assert data_position < 0x1800
         try:
             block_id = subchunk[position]
             block_raw_data = subchunk[data_position]
@@ -547,7 +547,7 @@ class World:
                 data_header = parser.BlockDataHeader(chunk[0].raw_decompressed)
                 subchunks = data_header.subchunks
                 debug = f"unknown0={unknown0:d} unknown1={unknown1:d} chunk0={chunk0:d} chunk1={chunk1:d} chunk2={chunk2:d} position={repr(position)} subchunks={subchunks:d} slot={slot:d} subfile={entry.subfile:d}"
-                print(debug)
+                # print(debug)
                 if position in entries:
                     raise ValueError(f"duplicate position {position}")
                 else:
@@ -610,7 +610,7 @@ class IterWorld:
         while not self.__blocks_left:
             if not self.__entries_left:
                 raise StopIteration
-            self.__blocks_left.clear()
+            self.__blocks_left = []
             position, self.__entry = self.__entries_left.pop(0)
             self.__position = (position[0] * 0x10, position[1] * 0x10, position[2])
             for x in range(0x10):

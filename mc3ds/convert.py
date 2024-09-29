@@ -1,13 +1,16 @@
+import sys
 from io import BytesIO
 import shutil
 from pathlib import Path
+import random
+import json
 
 import pyanvileditor
 from pyanvileditor.world import World, BlockState
 from pyanvileditor.canvas import Canvas
 import nbtlib
 from nbtlib.tag import String
-import json
+from tqdm import tqdm
 
 from . import classes
 
@@ -18,7 +21,6 @@ def convert(
     world_out: Path,
     delete_out: bool = False,
 ) -> None:
-    print(world_3ds.vdb[world_3ds.vdb.keys()[0]]._header)
     if world_out.exists():
         if delete_out:
             shutil.rmtree(world_out)
@@ -64,74 +66,60 @@ def convert(
         block_states[key] = BlockState(name, {})
     air = block_states[(0, 0)]
     glass = block_states[(20, 0)]
+    netherite_block = BlockState("minecraft:netherite_block", {})
     done = set()
+    overworld = {}
     nether = {}
     end = {}
-    print("Placing blocks")
-    with World(world_out) as world:
-        canvas = Canvas(world)
-
+    total = 0
+    for entry in world_3ds.entries.values():
+        total += 16 * 16 * 16 * entry.subchunk_count
+    blocks_since_update = 0  # blocks since progress bar update
+    with tqdm(total=total, unit="block", desc="Parsing chunks") as progress_bar:
         for position, dimension, entry, block_id in world_3ds:
-            debug = entry.debug
             try:
                 new_block = block_states[block_id]
             except KeyError:
-                if block_id[0] not in (0, 7, 73):
-                    print(f"unknown block {block_id} debug {debug}")
-                new_block = air
-            if (
-                False
-                and entry._header.unknownChunkParameter == 0x1
-                and new_block == air
-            ):
-                new_block = glass
-            # position = (position[0], position[1] + debug[2] + debug[3] * 8, position[2])
-            if new_block.name in (
-                # "minecraft:nether_portal",
-                "minecraft:beacon",
-                "minecraft:emerald_block",
-                "minecraft:diamond_block",
-                "minecraft:gold_block",
-                "minecraft:iron_block",
-            ):
-                block_name = block_ids.get(block_id, "unknown")
+                unknown_block = True
+                new_block = netherite_block
                 print(
-                    f"{block_name} {block_id} at {position} dimension {dimension} debug {debug}"
+                    f"unknown {block_id} at {position} dimension {dimension} debug {debug}"
                 )
-            unique_position = (position, dimension)
-            if unique_position in done:
-                raise ValueError("blocks overlap")
             else:
-                done.add(unique_position)
+                unknown_block = False
+            # unique_position = (position, dimension)
+            # if unique_position in done:
+            #     raise ValueError("blocks overlap")
+            # else:
+            #     done.add(unique_position)
             if new_block != air:
                 if dimension == 0:
-                    try:
-                        world.get_block(position).set_state(new_block)
-                    except Exception as exception:
-                        print(f"failed to set block at {position}")
-                        raise exception from None
+                    overworld[position] = new_block
                 elif dimension == 1:
                     nether[position] = new_block
                 elif dimension == 2:
                     end[position] = new_block
                 else:
                     raise ValueError(f"invalid dimension {dimension:d}")
-    if nether:
-        print("Placing Nether blocks")
-        with World(world_out, dimension=1) as world:
-            for position, block in nether.items():
+            blocks_since_update += 1
+            if random.randint(1, 1000) == 1:
+                progress_bar.update(blocks_since_update)
+                blocks_since_update = 0
+
+    def place_dimension(number, blocks, name):
+        if not blocks:
+            return
+        total = len(blocks)
+        with World(world_out, dimension=number) as world:
+            for position, block in tqdm(
+                blocks.items(), desc=f"Placing {name} blocks", unit="block"
+            ):
                 try:
                     world.get_block(position).set_state(block)
                 except Exception as exception:
-                    print(f"failed to set block at Nether {position}")
-                    raise exception from None
-    if end:
-        print("Placing End blocks")
-        with World(world_out, dimension=2) as world:
-            for position, block in end.items():
-                try:
-                    world.get_block(position).set_state(block)
-                except Exception as exception:
-                    pass
-                    # print(f"failed to set block at End {position}")
+                    print(f"failed to set block at {postion}", file=sys.stderr)
                     # raise exception from None
+
+    place_dimension(0, overworld, "Overworld")
+    place_dimension(1, nether, "Nether")
+    place_dimension(2, end, "End")

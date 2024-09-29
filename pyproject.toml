@@ -20,6 +20,7 @@ dependencies = [
     "dissect.cstruct",
     "click",
     "nbtlib",
+    "tqdm",
     "pyanvileditor@git+https://github.com/MC3DS-Save-Research/PyAnvilEditor",
 ]
 
