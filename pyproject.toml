@@ -36,4 +36,4 @@ ls3ds = "mc3ds.ls3ds:main"
 package-dir = {"mc3ds" = "mc3ds"}
 
 [tool.setuptools.package-data]
-mc3ds = ["*.h", "*.json", "data/*"]
+mc3ds = ["*.h", "*.json", "data/*", "data/minecraft-block-ids/*"]
