@@ -82,9 +82,7 @@ def convert(
             except KeyError:
                 unknown_block = True
                 new_block = netherite_block
-                print(
-                    f"unknown {block_id} at {position} dimension {dimension} debug {debug}"
-                )
+                print(f"unknown {block_id} at {position} dimension {dimension}")
             else:
                 unknown_block = False
             # unique_position = (position, dimension)
