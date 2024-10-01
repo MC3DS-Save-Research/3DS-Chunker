@@ -70,6 +70,9 @@ def main(
     world_out: Path,
     delete_out: bool = False,
 ) -> None:
+    import time
+
+    start_time = time.time()
     script_path = Path(__file__).parent
     if out.exists() and not delete_out:
         print(
@@ -82,6 +85,7 @@ def main(
     print(f"World name: {world.name}")
     if mode == "convert":
         convert(world, blank_world, world_out, delete_out)
+        print(time.time() - start_time)
     elif mode == "extract":
         if out.exists() and delete_out:
             if (out / "3dschunker.txt").is_file():

@@ -38,7 +38,7 @@ def parse_position(position) -> tuple[int, int, int]:
         z -= unsigned_size
     # combined = entry.position  # entry.xBitfield | (entry.zBitfield << 16)
     # position = self._parse_position(combined)
-    return (x, z, dimension)
+    return (int(x), int(z), int(dimension))
 
 
 class BaseParser:
@@ -452,11 +452,7 @@ class VDBDirectory(DBDirectory):
 
 class Entry:
     def __init__(self, header, chunk: Chunk, debug=None) -> None:
-        self._header = header
-        self._chunk = chunk
-        block_data, unknown, biomes = self._chunk[0].data
-        self.blocks = block_data
-        self.unknown = unknown
+        self.blocks, self.unknown, self.biomes = chunk[0].data
         self.debug = debug
 
     def __getitem__(self, position: tuple[int, int, int]) -> int:
@@ -495,6 +491,12 @@ class Entry:
         return len(self.blocks)
 
 
+class CDBIndex(Index):
+    @property
+    def chunks(self) -> tuple:
+        pass
+
+
 class World:
     def __init__(self, path: str | bytes | os.PathLike) -> None:
         self._path = Path(path)
@@ -521,7 +523,7 @@ class World:
         with open(self._cdb_path / "newindex.cdb", "rb") as index_file:
             self._index = Index(index_file)
 
-        entries = {}
+        self.entries = {}
         for entry in self._index.entries:
             slot = entry.slot
             assert entry.constant0 == 0x20FF
@@ -536,23 +538,15 @@ class World:
 
                 position = parse_position(entry.position)
                 assert position == chunk.position
-                unknown0 = entry.parameters.unknown0
-                unknown1 = entry.parameters.unknown1
-                assert unknown0 == chunk.unknown_parameter_0
-                assert unknown1 == chunk.unknown_parameter_1
                 chunk0 = chunk._header.unknown0
                 chunk1 = chunk._header.unknown1
                 chunk2 = chunk._header.unknown2
 
-                data_header = parser.BlockDataHeader(chunk[0].raw_decompressed)
-                subchunks = data_header.subchunks
-                debug = f"unknown0={unknown0:d} unknown1={unknown1:d} chunk0={chunk0:d} chunk1={chunk1:d} chunk2={chunk2:d} position={repr(position)} subchunks={subchunks:d} slot={slot:d} subfile={entry.subfile:d}"
-                # print(debug)
-                if position in entries:
+                debug = None  # f"chunk0={chunk0:d} chunk1={chunk1:d} chunk2={chunk2:d} position={repr(position)} slot={slot:d} subfile={entry.subfile:d}"
+                if position in self.entries:
                     raise ValueError(f"duplicate position {position}")
                 else:
-                    entries[position] = Entry(entry, chunk, debug)
-        self.entries = entries
+                    self.entries[position] = Entry(entry, chunk, debug)
 
     def __iter__(self):
         return IterWorld(self)

@@ -1,22 +1,123 @@
 import sys
-from io import BytesIO
 import shutil
 from pathlib import Path
 import random
+import re
 import json
+import asyncio
+from multiprocessing import Pool, Lock
+from collections import defaultdict
 
-import pyanvileditor
-from pyanvileditor.world import World, BlockState
-from pyanvileditor.canvas import Canvas
+from anvil import EmptyRegion, EmptyChunk, Block
 import nbtlib
 from nbtlib.tag import String
 from tqdm import tqdm
+from p_tqdm import p_umap, p_uimap
 
-from . import classes
+from .classes import World, Entry
+
+OVERWORLD = 0
+NETHER = 1
+END = 2
+
+
+class ChunkConverter:
+    def __init__(
+        self, position: tuple[int, int, int], entry: Entry, blocks: dict
+    ) -> None:
+        self.region_x, self.region_z, self.dimension = position
+        self.entry = entry
+        self.blocks = blocks
+
+    def place_blocks(self) -> None:
+        # print(self.region_x, self.region_z)
+        self.chunk = EmptyChunk(self.region_x, self.region_z)
+        for subchunk_y, blocks in enumerate(self.entry.blocks):
+            y_offset = subchunk_y * 16
+            for position, block in enumerate(blocks[:0x1000]):
+                y = (position & 0xF) + y_offset
+                z = (position & 0xF0) >> 4
+                x = position >> 8
+                # extract the nibble from the byte
+                block_byte = blocks[0x1000 + position // 2]
+                if position % 2 == 0:
+                    block_data = block_byte & 0xF
+                else:
+                    block_data = block_byte >> 4
+
+                block_id = (block, block_data)
+                if block_id != (0, 0):
+                    try:
+                        block = self.blocks[block_id]
+                    except KeyError:
+                        print(
+                            f"unknown block {block_id} at {(x, y, z)} dimension {self.dimension}",
+                            file=sys.stderr,
+                        )
+                        sys.stderr.flush()
+                        block = Block("minecraft", "netherite_block")
+                    self.chunk.set_block(block, x, y, z)
+
+    @property
+    def region_position(self) -> tuple[int, int, int]:
+        return self.region_x // 32, self.region_z // 32, self.dimension
+
+
+class RegionConverter:
+    def __init__(self, world_directory: Path, position: tuple[int, int, int]) -> None:
+        self.region_x, self.region_z, self.dimension = position
+        self.world_directory = Path(world_directory)
+        if self.dimension == OVERWORLD:
+            dimension_path = self.world_directory
+        elif self.dimension == NETHER:
+            dimension_path = self.world_directory / "DIM-1"
+        elif self.dimension == END:
+            dimension_path = self.world_directory / "DIM1"
+        else:
+            raise ValueError("invalid dimension")
+        self.region_file = (
+            dimension_path / "region" / f"r.{self.region_x:d}.{self.region_z:d}.mca"
+        )
+        self.region = EmptyRegion(self.region_x, self.region_z)
+
+    def add_chunk(self, chunk: EmptyChunk) -> None:
+        self.region.add_chunk(chunk)
+
+    def save(self) -> None:
+        # if the region directory hasn't been generated yet, create it
+        if self.world_directory.exists():
+            self.region_file.parent.mkdir(parents=True, exist_ok=True)
+        self.region.save(str(self.region_file))
+
+
+def parse_block_json(raw_blocks: dict) -> dict:
+    block_json = re.compile(r"^([^\[\]]+)(?:\[([^\[\]]*)\])?$")
+    blocks = {}
+
+    for numerical_id, new in raw_blocks["blocks"].items():
+        block_str, data_str = numerical_id.split(":")
+        block_id = (int(block_str), int(data_str))
+
+        # convert minecraft:item[key=value,otherkey=value] to {"key": "value", "otherkey": "value"}
+        parsed = block_json.match(new)
+        if parsed is None:
+            raise ValueError("invalid block")
+        name = parsed[1]
+        raw_nbt_data = parsed[2]
+        # intentionally not using "is None" because it should match an empty string too
+        if raw_nbt_data:
+            nbt_data = dict(item.split("=") for item in raw_nbt_data.split(","))
+        else:
+            nbt_data = {}
+
+        namespace, block = name.split(":")
+        blocks[block_id] = Block(namespace, block, nbt_data)
+
+    return blocks
 
 
 def convert(
-    world_3ds: classes.World,
+    world: World,
     blank_world: Path,
     world_out: Path,
     delete_out: bool = False,
@@ -28,96 +129,37 @@ def convert(
             raise FileExistsError("world output directory exists")
     shutil.copytree(blank_world, world_out)
     with nbtlib.load(world_out / "level.dat") as level:
-        level["Data"]["LevelName"] = String(world_3ds.name)
+        level["Data"]["LevelName"] = String(world.name)
 
-    converted = {}
-    block_ids = {}
-    block_states = {}
     # read the JSON files containing MCPE block IDs
-    with open(
-        Path(__file__).parent / "data" / "minecraft-block-ids" / "blocks_274.json"
-    ) as blocks_file:
+    with open(Path(__file__).parent / "data" / "blocks.json") as blocks_file:
         raw_blocks = json.load(blocks_file)
-    with open(Path(__file__).parent / "data" / "blocksB2J.json") as convert_file:
-        convert = json.load(convert_file)
-    for old, new in convert.items():
-        # remove the data
-        old_position = old.find("[")
-        if old_position == -1:
-            continue
-        new_position = new.find("[")
-        if new_position == -1:
-            continue
-        old_name = old[:old_position]
-        if old_name in converted:
-            pass
-        else:
-            converted[old_name] = new[:new_position]
-    for raw_block in raw_blocks:
-        key = (raw_block["id"], raw_block["data"])
-        old_name = raw_block["name"]
+    blocks = parse_block_json(raw_blocks)
+
+    chunk_converters = []
+
+    for position, entry in world.entries.items():
+        chunk_converters.append(ChunkConverter(position, entry, blocks))
+
+    def convert_chunk(
+        chunk_converter: ChunkConverter,
+    ) -> tuple[tuple[int, int, int], EmptyChunk]:
+        chunk_converter.place_blocks()
+        return chunk_converter.region_position, chunk_converter.chunk
+
+    regions = {}
+    for region_position, chunk in p_uimap(
+        convert_chunk, chunk_converters, desc="Converting chunks", unit="chunk"
+    ):
         try:
-            name = converted[old_name]
+            region_converter = regions[region_position]
         except KeyError:
-            # ignore Bedrock / Education edition exclusive blocks
-            continue
-        block_ids[key] = name
-        # cache the block states for better performance
-        block_states[key] = BlockState(name, {})
-    air = block_states[(0, 0)]
-    glass = block_states[(20, 0)]
-    netherite_block = BlockState("minecraft:netherite_block", {})
-    done = set()
-    overworld = {}
-    nether = {}
-    end = {}
-    total = 0
-    for entry in world_3ds.entries.values():
-        total += 16 * 16 * 16 * entry.subchunk_count
-    blocks_since_update = 0  # blocks since progress bar update
-    with tqdm(total=total, unit="block", desc="Parsing chunks") as progress_bar:
-        for position, dimension, entry, block_id in world_3ds:
-            try:
-                new_block = block_states[block_id]
-            except KeyError:
-                unknown_block = True
-                new_block = netherite_block
-                print(f"unknown {block_id} at {position} dimension {dimension}")
-            else:
-                unknown_block = False
-            # unique_position = (position, dimension)
-            # if unique_position in done:
-            #     raise ValueError("blocks overlap")
-            # else:
-            #     done.add(unique_position)
-            if new_block != air:
-                if dimension == 0:
-                    overworld[position] = new_block
-                elif dimension == 1:
-                    nether[position] = new_block
-                elif dimension == 2:
-                    end[position] = new_block
-                else:
-                    raise ValueError(f"invalid dimension {dimension:d}")
-            blocks_since_update += 1
-            if random.randint(1, 1000) == 1:
-                progress_bar.update(blocks_since_update)
-                blocks_since_update = 0
+            region_converter = regions[region_position] = RegionConverter(
+                world_out, region_position
+            )
+        region_converter.add_chunk(chunk)
 
-    def place_dimension(number, blocks, name):
-        if not blocks:
-            return
-        total = len(blocks)
-        with World(world_out, dimension=number) as world:
-            for position, block in tqdm(
-                blocks.items(), desc=f"Placing {name} blocks", unit="block"
-            ):
-                try:
-                    world.get_block(position).set_state(block)
-                except Exception as exception:
-                    print(f"failed to set block at {postion}", file=sys.stderr)
-                    # raise exception from None
+    def save_region(region_converter: RegionConverter) -> None:
+        region_converter.save()
 
-    place_dimension(0, overworld, "Overworld")
-    place_dimension(1, nether, "Nether")
-    place_dimension(2, end, "End")
+    p_umap(save_region, regions.values(), desc="Saving regions", unit="region")
