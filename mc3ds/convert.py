@@ -148,18 +148,35 @@ def convert(
         return chunk_converter.region_position, chunk_converter.chunk
 
     regions = {}
-    for region_position, chunk in p_uimap(
-        convert_chunk, chunk_converters, desc="Converting chunks", unit="chunk"
-    ):
-        try:
-            region_converter = regions[region_position]
-        except KeyError:
-            region_converter = regions[region_position] = RegionConverter(
-                world_out, region_position
-            )
-        region_converter.add_chunk(chunk)
+    if 1:
+        for chunk_converter in tqdm(
+            chunk_converters, desc="Converting chunks", unit="chunk"
+        ):
+            region_position, chunk = convert_chunk(chunk_converter)
+            try:
+                region_converter = regions[region_position]
+            except KeyError:
+                region_converter = regions[region_position] = RegionConverter(
+                    world_out, region_position
+                )
+            region_converter.add_chunk(chunk)
+    else:
+        for region_position, chunk in p_uimap(
+            convert_chunk, chunk_converters, desc="Converting chunks", unit="chunk"
+        ):
+            try:
+                region_converter = regions[region_position]
+            except KeyError:
+                region_converter = regions[region_position] = RegionConverter(
+                    world_out, region_position
+                )
+            region_converter.add_chunk(chunk)
 
     def save_region(region_converter: RegionConverter) -> None:
         region_converter.save()
 
-    p_umap(save_region, regions.values(), desc="Saving regions", unit="region")
+    for region_converter in tqdm(
+        regions.values(), desc="Saving regions", unit="region"
+    ):
+        save_region(region_converter)
+    # p_umap(save_region, regions.values(), desc="Saving regions", unit="region")
