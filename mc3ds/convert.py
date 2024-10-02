@@ -5,7 +5,8 @@ import random
 import re
 import json
 import asyncio
-from multiprocessing import Pool, Lock
+from multiprocessing import Lock
+from concurrent.futures import ThreadPoolExecutor
 from collections import defaultdict
 
 from anvil import EmptyRegion, EmptyChunk, Block

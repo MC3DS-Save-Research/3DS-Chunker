@@ -85,7 +85,10 @@ def main(
     print(f"World name: {world.name}")
     if mode == "convert":
         convert(world, blank_world, world_out, delete_out)
-        print(f"conversion took {time.time() - start_time:f} seconds")
+        total_time = time.time() - start_time
+        minutes = int(total_time // 60)
+        seconds = total_time % 60
+        print(f"conversion time is {minutes:d}:{seconds:.2f}")
     elif mode == "extract":
         if out.exists() and delete_out:
             if (out / "3dschunker.txt").is_file():

@@ -198,6 +198,7 @@ class Subchunk:
     def data(self) -> tuple[tuple[tuple[bytes]], bytes, tuple[int]]:
         # https://minecraft.wiki/w/Bedrock_Edition_level_format/History
         data = self.raw_decompressed[len(self._data_header) :]
+        assert self._data_header.subchunks <= 8
         calculated = self._data_header.subchunks * RAW_SUBCHUNK_SIZE
         # if self._data_header.subchunks > 1:
         #     with open("../test.bin", "wb") as test:
