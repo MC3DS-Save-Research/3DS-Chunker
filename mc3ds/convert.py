@@ -21,47 +21,60 @@ OVERWORLD = 0
 NETHER = 1
 END = 2
 
+AIR = (0, 0)
+
 
 class ChunkConverter:
     def __init__(
         self, position: tuple[int, int, int], entry: Entry, blocks: dict
     ) -> None:
-        self.region_x, self.region_z, self.dimension = position
+        self.chunk_x, self.chunk_z, self.dimension = position
         self.entry = entry
         self.blocks = blocks
 
     def place_blocks(self) -> None:
-        # print(self.region_x, self.region_z)
-        self.chunk = EmptyChunk(self.region_x, self.region_z)
-        for subchunk_y, blocks in enumerate(self.entry.blocks):
+        self.chunk = EmptyChunk(self.chunk_x, self.chunk_z)
+        setted = set()
+        for subchunk_y, subchunk in enumerate(self.entry.data_chunk.data.subchunks):
             y_offset = subchunk_y * 16
-            for position, block in enumerate(blocks[:0x1000]):
-                y = (position & 0xF) + y_offset
-                z = (position & 0xF0) >> 4
-                x = position >> 8
-                # extract the nibble from the byte
-                block_byte = blocks[0x1000 + position // 2]
-                if position % 2 == 0:
-                    block_data = block_byte & 0xF
-                else:
-                    block_data = block_byte >> 4
+            for x, row in enumerate(subchunk.blocks):
+                for z, column in enumerate(row):
+                    for y, block in enumerate(column):
+                        unknown_block_data = subchunk.unknownBlockData[x][z][y]
+                        calculated_y = y + y_offset
+                        pos = x, calculated_y, z
+                        setted.add(pos)
+                        position = x * 16 * 16 + z * 16 + y
+                        # extract the nibble from the byte
+                        block_byte = subchunk.blockData[position // 2]
+                        if position % 2 == 0:
+                            block_data = block_byte & 0xF
+                        else:
+                            block_data = block_byte >> 4
 
-                block_id = (block, block_data)
-                if block_id != (0, 0):
-                    try:
-                        block = self.blocks[block_id]
-                    except KeyError:
-                        print(
-                            f"unknown block {block_id} at {(x, y, z)} dimension {self.dimension}",
-                            file=sys.stderr,
-                        )
-                        sys.stderr.flush()
-                        block = Block("minecraft", "netherite_block")
-                    self.chunk.set_block(block, x, y, z)
+                        block_id = (block, block_data)
+                        if unknown_block_data:
+                            raise ValueError(
+                                f"UNKNOWN UNKNOWN UNKNOWN 0x{unknown_block_data:02X}"
+                            )
+                            if block_id == AIR:
+                                block = Block("minecraft", "glass")
+                                self.chunk.set_block(block, x, calculated_y, z)
+                                continue
+                        if block_id != AIR:
+                            try:
+                                block = self.blocks[block_id]
+                            except KeyError:
+                                print(
+                                    f"unknown block {block_id} at {(x, calculated_y, z)} dimension {self.dimension}",
+                                    file=sys.stderr,
+                                )
+                                sys.stderr.flush()
+                                block = Block("minecraft", "netherite_block")
 
     @property
     def region_position(self) -> tuple[int, int, int]:
-        return self.region_x // 32, self.region_z // 32, self.dimension
+        return self.chunk_x // 32, self.chunk_z // 32, self.dimension
 
 
 class RegionConverter:
@@ -149,35 +162,65 @@ def convert(
         return chunk_converter.region_position, chunk_converter.chunk
 
     regions = {}
-    if 1:
-        for chunk_converter in tqdm(
-            chunk_converters, desc="Converting chunks", unit="chunk"
-        ):
-            region_position, chunk = convert_chunk(chunk_converter)
-            try:
-                region_converter = regions[region_position]
-            except KeyError:
-                region_converter = regions[region_position] = RegionConverter(
-                    world_out, region_position
-                )
-            region_converter.add_chunk(chunk)
-    else:
-        for region_position, chunk in p_uimap(
-            convert_chunk, chunk_converters, desc="Converting chunks", unit="chunk"
-        ):
-            try:
-                region_converter = regions[region_position]
-            except KeyError:
-                region_converter = regions[region_position] = RegionConverter(
-                    world_out, region_position
-                )
+
+    def process_region(
+        region_position: tuple[int, int, int], chunk_converters: list[EmptyChunk]
+    ):
+        assert region_position not in regions
+        regions[region_position] = region_converter = RegionConverter(
+            world_out, region_position
+        )
+        for chunk in chunk_converters:
             region_converter.add_chunk(chunk)
 
     def save_region(region_converter: RegionConverter) -> None:
         region_converter.save()
 
-    for region_converter in tqdm(
-        regions.values(), desc="Saving regions", unit="region"
-    ):
-        save_region(region_converter)
-    # p_umap(save_region, regions.values(), desc="Saving regions", unit="region")
+    chunk_regions = defaultdict(list)
+    region_converters = {}
+
+    class DummyPoolExecutorContext:
+        def map(self, func, iter):
+            for thing in iter:
+                yield func(thing)
+
+    class DummyPoolExecutor:
+        def __enter__(self):
+            return DummyPoolExecutorContext()
+
+        def __exit__(self, exc_type, exc_value, traceback):
+            return False
+
+    # disable threads
+    ThreadPoolExecutor = DummyPoolExecutor
+    with ThreadPoolExecutor() as executor:
+        for current_region_position, chunk in tqdm(
+            executor.map(convert_chunk, chunk_converters),
+            total=len(chunk_converters),
+            desc="Converting chunks",
+            unit="chunk",
+        ):
+            try:
+                region_converter = region_converters[current_region_position]
+            except KeyError:
+                region_converter = region_converters[current_region_position] = (
+                    RegionConverter(world_out, current_region_position)
+                )
+            region_converter.add_chunk(chunk)
+            # chunk_converters = chunk_regions[current_region_position]
+            # chunk_converters.append(chunk)
+        # tuple(
+        #     tqdm(
+        #         executor.map(
+        #             lambda keyvalue: process_region(*keyvalue), chunk_regions.items()
+        #         ),
+        #         total=len(chunk_regions),
+        #         desc="Adding chunks to regions",
+        #         unit="region",
+        #     )
+        # )
+
+        for region_converter in tqdm(
+            region_converters.values(), desc="Saving regions", unit="region"
+        ):
+            save_region(region_converter)

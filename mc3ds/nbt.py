@@ -1,8 +1,19 @@
+from io import BytesIO
 from typing import Any
 
 from .xnbt import XNBT
+from pynbt import NBTFile
 
 BEDROCK_HEADER_SIZE: int = 0x8
+
+
+class NewNBT:
+    def __init__(self, buffer: bytes) -> None:
+        self.buffer = buffer
+        self._parse(buffer)
+
+    def _parse(self, buffer: bytes) -> None:
+        self.nbt = NBTFile(BytesIO(self.buffer), little_endian=True)
 
 
 class NBT:

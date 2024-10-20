@@ -173,7 +173,7 @@ class Subchunk:
     def __init__(self, header, compressed: bytes) -> None:
         self._header = header
         self._compressed = compressed
-        self.__header_cache = None
+        self.__data_cache = None
 
     @property
     def compressed(self) -> bytes:
@@ -195,36 +195,14 @@ class Subchunk:
         return decompressed
 
     @property
-    def data(self) -> tuple[tuple[tuple[bytes]], bytes, tuple[int]]:
-        # https://minecraft.wiki/w/Bedrock_Edition_level_format/History
-        data = self.raw_decompressed[len(self._data_header) :]
-        assert self._data_header.subchunks <= 8
-        calculated = self._data_header.subchunks * RAW_SUBCHUNK_SIZE
-        # if self._data_header.subchunks > 1:
-        #     with open("../test.bin", "wb") as test:
-        #         test.write(self.raw_decompressed)
-        #     input("done")
-        block_data = data[:calculated]
-        other_data = data[calculated:]
-        block_split = tuple(
-            data[i * RAW_SUBCHUNK_SIZE : (i + 1) * RAW_SUBCHUNK_SIZE]
-            for i in range(0, self._data_header.subchunks)
-        )
-        assert len(b"".join(block_split)) == calculated
-        assert len(b"".join(block_split)) == len(
-            self.raw_decompressed[: len(b"".join(block_split))]
-        )
-        assert b"".join(block_split) == data[: len(b"".join(block_split))]
-        biomes_start = len(other_data) - 0x100
-        unknown = other_data[:biomes_start]  # 16-bit
-        biomes = tuple(other_data[biomes_start:])
-        return block_split, unknown, biomes
-
-    @property
-    def _data_header(self):
-        if self.__header_cache is None:
-            self.__header_cache = parser.BlockDataHeader(self.raw_decompressed)
-        return self.__header_cache
+    def data(self):
+        if self.__data_cache is None:
+            self.__data_cache = data = parser.BlockData(self.raw_decompressed)
+            assert len(data) == len(self.raw_decompressed)
+            assert data.subchunkCount <= 8
+            for subchunk in data.subchunks:
+                assert subchunk.constant0 == 0x0
+        return self.__data_cache
 
     @property
     def size(self) -> int:
@@ -453,30 +431,25 @@ class VDBDirectory(DBDirectory):
 
 class Entry:
     def __init__(self, header, chunk: Chunk, debug=None) -> None:
-        self.blocks, self.unknown, self.biomes = chunk[0].data
         self.debug = debug
+        self.data_chunk = chunk[0]
+        self.chunk = chunk
 
     def __getitem__(self, position: tuple[int, int, int]) -> int:
+        data = self.data_chunk.data
         x, y, z = position
         subchunk_index, subchunk_y = y // 16, y % 16
         if subchunk_index > 8:
             raise KeyError("position out of range")
 
         try:
-            subchunk = self.blocks[subchunk_index]
+            subchunk = data.subchunks[subchunk_index]
         except KeyError:
             return (0, 0)
-        if len(subchunk) != RAW_SUBCHUNK_SIZE:
-            print(f"bad subchunk length {len(subchunk):d}!")
-            return (0, 0)
-        position = x * (16 * 16) + subchunk_y + z * 16
-        assert position < 0x1000
-        # the block data is stored as nibbles
-        data_position = 0x1000 + position // 2
-        assert data_position < 0x1800
+        position = x * 16 * 16 + z * 16 + subchunk_y
         try:
-            block_id = subchunk[position]
-            block_raw_data = subchunk[data_position]
+            block_id = subchunk.blocks[x][z][y]
+            block_raw_data = subchunk.data[position // 2]
         except IndexError:
             raise KeyError("position out of range") from None
 

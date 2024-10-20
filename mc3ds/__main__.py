@@ -1,5 +1,3 @@
-# released under MIT license
-
 import sys
 from pathlib import Path
 import shutil
@@ -17,6 +15,7 @@ import click
 from .classes import *
 from .parser import parser
 from .convert import convert
+from .nbt import NewNBT
 
 
 @click.command()
@@ -88,7 +87,7 @@ def main(
         total_time = time.time() - start_time
         minutes = int(total_time // 60)
         seconds = total_time % 60
-        print(f"conversion time is {minutes:d}:{seconds:.2f}")
+        print(f"conversion time is {minutes:02d}:{seconds:05.2f}")
     elif mode == "extract":
         if out.exists() and delete_out:
             if (out / "3dschunker.txt").is_file():
@@ -109,14 +108,14 @@ def main(
             region_path.mkdir()
             for index, data in vdb_file:
                 try:
-                    name = data.name.decode().replace("\0", "")
+                    base_name = data.name.decode().replace("\0", "")
                 except UnicodeDecodeError:
-                    name = "None"
-                filename = name
+                    base_name = "None"
+                filename = base_name
                 nbt_path = region_path / filename
                 n = 1
                 while nbt_path.exists():
-                    filename = f"{filename}{n:d}"
+                    filename = f"{base_name}{n:d}"
                     nbt_path = region_path / filename
                     n += 1
                 nbt_metadata_path = region_path / f"{filename}.json"
@@ -139,12 +138,12 @@ def main(
             region_path.mkdir()
             for index, chunk in cdb_file:
                 chunk_path = region_path / f"chunk{index:d}"
-                chunk_path.mkdir()
+                # chunk_path.mkdir()
 
-                subchunks, unknown, biomes = chunk[0].data
                 for subchunk_index, subchunk in chunk:
                     subchunk_path = chunk_path / f"data{subchunk_index:d}"
                     if subchunk_index == 0:
+                        continue  # TODO fix this and don't just remove it
                         block_data, unknown, biomes = subchunk.data
                         for block_index, block in enumerate(block_data):
                             block_path = chunk_path / f"blocks{block_index:d}"
@@ -157,8 +156,13 @@ def main(
                         with open(biomes_path, "xb") as biomes_out:
                             biomes_out.write(bytes(biomes))
                     else:
-                        with open(subchunk_path, "xb") as subchunk_out:
-                            subchunk_out.write(subchunk.raw_decompressed)
+                        chunk_path.mkdir(exist_ok=True)
+                        new_nbt = NewNBT(subchunk.raw_decompressed)
+                        with open(subchunk_path, "x") as subchunk_out:
+                            # subchunk_out.write(subchunk.raw_decompressed)
+                            subchunk_out.write(new_nbt.nbt.pretty())
+                        # if subchunk_index >= 3:
+                        #     print(index, subchunk_index)
             print(f"extracted region {number:d}!")
 
 
