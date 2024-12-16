@@ -1,6 +1,8 @@
 # 3DS-Chunker
 This is a WIP tool for Converting Worlds to/from 3DS Edition and Java Edition.
 
+### Installation
+Run `pip install git+https://github.com/MC3DS-Save-Research/3DS-Chunker/tree/main/mc3ds` to install from GitHub, or `pip install -e .` to install from a local copy (for development)
 
 ### Contributors
 - [Anonymous941](https://github.com/Anonymous941) - Main Developer of Tool.
