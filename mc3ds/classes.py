@@ -5,9 +5,12 @@ from typing import Any, Iterable
 from pathlib import Path
 import zlib
 import re
+import logging
 
 from .nbt import NBT
 from .parser import parser
+
+logger = logging.getLogger(__name__)
 
 
 def process_key(key: int, length: int | None = None) -> int:
@@ -502,10 +505,10 @@ class World:
             slot = entry.slot
             assert entry.constant0 == 0x20FF
             if entry.constant1 != 0xA:
-                print(f"!!! not constant 0x{entry.constant1:X} !!!")
+                logger.error(f"!!! not constant 0x{entry.constant1:X} !!!")
             assert entry.constant2 == 0x8000
             if slot not in self.cdb.keys():
-                pass  # print(f"N {entry}")
+                pass  # logger.debug(f"N {entry}")
             else:
                 assert slot in self.cdb.keys()
                 chunk = self.cdb[slot][entry.subfile]

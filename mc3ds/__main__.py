@@ -19,6 +19,9 @@ from .convert import convert
 from .nbt import NewNBT
 from .javato3ds import convert_java
 
+logging.basicConfig("3dschunker.log", level=logging.DEBUG)
+logger = logging.getLogger(__name__)
+
 
 @click.command()
 @click.argument("path", type=click.Path(exists=True, file_okay=False, path_type=Path))
@@ -81,20 +84,17 @@ def main(
     start_time = time.time()
     script_path = Path(__file__).parent
     if out.exists() and not delete_out and mode != "javato3ds":
-        print(
-            'already extracted, please move or delete the "out" folder',
-            file=sys.stderr,
-        )
+        logger.warning('already extracted, please move or delete the "out" folder')
         sys.exit(1)
 
     world = World(path)
-    print(f"World name: {world.name}")
+    logger.info(f"World name: {world.name}")
     if mode == "convert":
         convert(world, blank_world, world_out, delete_out)
         total_time = time.time() - start_time
         minutes = int(total_time // 60)
         seconds = total_time % 60
-        print(f"conversion time is {minutes:02d}:{seconds:05.2f}")
+        logger.info(f"conversion time is {minutes:02d}:{seconds:05.2f}")
     elif mode == "extract":
         if out.exists() and delete_out:
             if (out / "3dschunker.txt").is_file():
@@ -170,7 +170,7 @@ def main(
                             subchunk_out.write(new_nbt.nbt.pretty())
                         # if subchunk_index >= 3:
                         #     print(index, subchunk_index)
-            print(f"extracted region {number:d}!")
+            logger.debug(f"extracted region {number:d}!")
     elif mode == "javato3ds":
         convert_java(path, world_out, delete_out)
 

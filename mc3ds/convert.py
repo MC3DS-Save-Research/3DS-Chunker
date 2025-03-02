@@ -5,6 +5,7 @@ import random
 import re
 import json
 import asyncio
+import logging
 from multiprocessing import Lock
 from concurrent.futures import ThreadPoolExecutor
 from collections import defaultdict
@@ -22,6 +23,8 @@ NETHER = 1
 END = 2
 
 AIR = (0, 0)
+
+logger = logging.getLogger(__name__)
 
 
 class ChunkConverter:
@@ -65,9 +68,8 @@ class ChunkConverter:
                             try:
                                 block = self.blocks[block_id]
                             except KeyError:
-                                print(
-                                    f"unknown block {block_id} at {(x, calculated_y, z)} dimension {self.dimension}",
-                                    file=sys.stderr,
+                                logger.warning(
+                                    f"unknown block {block_id} at {(x, calculated_y, z)} dimension {self.dimension}"
                                 )
                                 sys.stderr.flush()
                                 block = Block("minecraft", "netherite_block")

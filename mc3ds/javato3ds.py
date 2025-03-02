@@ -1,9 +1,12 @@
 from pathlib import Path
 import json
+import logging
 
 from anvil import Region, Chunk, Block
 
 from .convert import parse_block_json
+
+logger = logging.getLogger(__name__)
 
 OVERWORLD = 0
 NETHER = 1
@@ -31,7 +34,7 @@ class RegionJavaConverter:
         chunk = self.region.get_chunk(1, 1)
         for block in chunk.stream_chunk():
             if block.name() != "minecraft:air":
-                print(block)
+                logger.debug(block)
 
 
 def convert_java(world_3ds: Path, java_world: Path, delete_out: bool) -> None:
