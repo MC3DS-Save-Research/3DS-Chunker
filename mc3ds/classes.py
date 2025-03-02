@@ -9,8 +9,6 @@ import re
 from .nbt import NBT
 from .parser import parser
 
-RAW_SUBCHUNK_SIZE = 0x2801
-
 
 def process_key(key: int, length: int | None = None) -> int:
     if length is not None and key > length - 1:
@@ -232,6 +230,8 @@ class Chunk:
         self._reload_data()
 
     def _reload_data(self) -> None:
+        if self.filler:
+            return
         self._raw = self._subfile.raw
         self._header = parser.ChunkHeader(self._raw)
 

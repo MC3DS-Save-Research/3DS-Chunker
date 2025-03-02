@@ -1,4 +1,5 @@
 import sys
+import time
 from pathlib import Path
 import shutil
 import json
@@ -16,6 +17,7 @@ from .classes import *
 from .parser import parser
 from .convert import convert
 from .nbt import NewNBT
+from .javato3ds import convert_java
 
 
 @click.command()
@@ -36,6 +38,13 @@ from .nbt import NewNBT
     help="Convert a 3DS world to a Java world",
 )
 @click.option(
+    "-j",
+    "--java-to-3ds",
+    "mode",
+    flag_value="javato3ds",
+    help="Convert a Java world to a 3DS world",
+)
+@click.option(
     "-x",
     "--extract",
     "mode",
@@ -53,7 +62,7 @@ from .nbt import NewNBT
     "-w",
     "--world-out",
     type=click.Path(file_okay=False, path_type=Path),
-    help="Path to the output world",
+    help="Path to the Java world",
     default=Path(__file__).parent.parent / "World",
 )
 @click.option(
@@ -69,11 +78,9 @@ def main(
     world_out: Path,
     delete_out: bool = False,
 ) -> None:
-    import time
-
     start_time = time.time()
     script_path = Path(__file__).parent
-    if out.exists() and not delete_out:
+    if out.exists() and not delete_out and mode != "javato3ds":
         print(
             'already extracted, please move or delete the "out" folder',
             file=sys.stderr,
@@ -164,6 +171,8 @@ def main(
                         # if subchunk_index >= 3:
                         #     print(index, subchunk_index)
             print(f"extracted region {number:d}!")
+    elif mode == "javato3ds":
+        convert_java(path, world_out, delete_out)
 
 
 if __name__ == "__main__":

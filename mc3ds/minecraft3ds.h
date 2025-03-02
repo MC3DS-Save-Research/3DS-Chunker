@@ -75,21 +75,12 @@ struct Index {
     uint32 unknown0;
     uint32 entrySize;
     uint32 pointerCount;
-    uint32 constant1;
+    uint32 constant1; // always 0x80
     IndexPointer pointers[pointerCount];
     CDBEntry entries[entryCount];
 };
 
-struct Subchunk {
-    uint8 constant0; // always 0x0
-    uint8 blocks[16][16][16];
-    uint8 blockData[16 * 16 * 16 / 2]; // 16*16*16 array of nibbles
-    uint8 unknownBlockData[16][16][16]; // always 0x0?
-};
-
-struct BlockData {
-    uint8 subchunkCount;
-    Subchunk subchunks[subchunkCount];
-    uint16 unknown0[16][16];
-    uint8 biomes[16][16];
+struct BlockDataHeader {
+    uint8 subchunks;
+    uint8 unknown;
 };
