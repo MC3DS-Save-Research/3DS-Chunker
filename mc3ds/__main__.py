@@ -55,13 +55,6 @@ logger = logging.getLogger(__name__)
     help="Extract data into separate files for analysis (for developers)",
 )
 @click.option(
-    "-b",
-    "--blank-world",
-    type=click.Path(exists=True, file_okay=False, path_type=Path),
-    help="Path to a blank Minecraft Java world",
-    default=Path(__file__).parent.parent / "Blank",
-)
-@click.option(
     "-w",
     "--world-out",
     type=click.Path(file_okay=False, path_type=Path),
@@ -77,12 +70,12 @@ def main(
     path: Path,
     out: Path,
     mode: str,
-    blank_world: Path,
     world_out: Path,
     delete_out: bool = False,
 ) -> None:
     start_time = time.time()
     script_path = Path(__file__).parent
+    blank_world = script_path.parent / "blankworld"
     if out.exists() and not delete_out and mode != "javato3ds":
         logger.warning('already extracted, please move or delete the "out" folder')
         sys.exit(1)
