@@ -19,7 +19,7 @@ from .convert import convert
 from .nbt import NewNBT
 from .javato3ds import convert_java
 
-logging.basicConfig("3dschunker.log", level=logging.DEBUG)
+logging.basicConfig(filename="3dschunker.log", level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 
