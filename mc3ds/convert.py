@@ -137,12 +137,30 @@ def convert(
     blank_world: Path,
     world_out: Path,
     delete_out: bool = False,
+    interactive: bool = True,
 ) -> None:
     if world_out.exists():
-        if delete_out:
+        if not world_out.is_dir() or not (world_out / "level.dat").is_file():
+            raise FileExistsError(
+                "world output folder already exists, and is not a Java savefile, did you select the right folder?"
+            )
+        elif delete_out:
             shutil.rmtree(world_out)
+        elif interactive:
+            print("A converted world already exists, do you want to overwrite it?")
+            while True:
+                choice = input("[y/n]> ").strip().upper()
+                if choice in ("Y", "YES"):
+                    shutil.rmtree(world_out)
+                    break
+                elif choice in ("N", "NO"):
+                    raise FileExistsError("world output folder already exists")
+                elif not choice:
+                    pass
+                else:
+                    print("Invalid input, please enter Y or N")
         else:
-            raise FileExistsError("world output directory exists")
+            raise FileExistsError("world output folder already exists")
     shutil.copytree(blank_world, world_out)
     with nbtlib.load(world_out / "level.dat") as level:
         level["Data"]["LevelName"] = String(world.name)

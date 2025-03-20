@@ -59,7 +59,7 @@ logger = logging.getLogger(__name__)
     "--world-out",
     type=click.Path(file_okay=False, path_type=Path),
     help="Path to the Java world",
-    default=Path(__file__).parent.parent / "World",
+    default=Path.cwd() / "Converted",
 )
 @click.option(
     "--delete-out",

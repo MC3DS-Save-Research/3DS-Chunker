@@ -3,11 +3,11 @@
 
 // the first subfile has a file header and the rest have garbage here
 struct FileHeader {
-    // both are always 1
+    // both are always 1, version?
     uint16 something0;
     uint16 something1;
     uint32 subfileCount; // total number of subfiles
-    uint32 constant0; // always 0x14, file header size?
+    uint32 footerSize; // footer after the subfiles, it seems to always be blank (all zeroes)
     uint32 subfileSize; // size of each subfile
     uint32 unknown0; // 0x4 for CDB, 0x100 for VDB
 };
@@ -80,7 +80,16 @@ struct Index {
     CDBEntry entries[entryCount];
 };
 
-struct BlockDataHeader {
-    uint8 subchunks;
-    uint8 unknown;
+struct Subchunk {
+        uint8 constant0; // always 0x0
+        uint8 blocks[16][16][16];
+        uint8 blockData[16 * 16 * 16 / 2]; // 16*16*16 array of nibbles
+        uint8 unknownBlockData[16][16][16]; // always 0x0?
+};
+
+struct BlockData {
+    uint8 subchunkCount;
+    Subchunk subchunks[subchunkCount];
+    uint16 unknown0[16][16];
+    uint8 biomes[16][16];
 };

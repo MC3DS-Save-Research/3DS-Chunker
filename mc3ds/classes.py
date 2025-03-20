@@ -12,6 +12,8 @@ from .parser import parser
 
 logger = logging.getLogger(__name__)
 
+# TODO separate this into smaller files
+
 
 def process_key(key: int, length: int | None = None) -> int:
     if length is not None and key > length - 1:
@@ -129,7 +131,7 @@ class IterDB:
 class DBFile(BaseParser):
     def _reload_data(self) -> None:
         self._header = parser.FileHeader(self._stream)
-        assert self._header.constant0 == 0x14
+        assert self._header.footerSize == 0x14
 
     @property
     def something(self) -> tuple[int]:
@@ -497,8 +499,13 @@ class World:
             self.old_metadata = NBT(buffer)
         else:
             self.old_metadata = None
-        with open(self._cdb_path / "newindex.cdb", "rb") as index_file:
-            self._index = Index(index_file)
+        try:
+            with open(self._cdb_path / "newindex.cdb", "rb") as index_file:
+                self._index = Index(index_file)
+        except FileNotFoundError:
+            # if there's only been one index, then newindex.cdb isn't created
+            with open(self._cdb_path / "index.cdb", "rb") as index_file:
+                self._index = Index(index_file)
 
         self.entries = {}
         for entry in self._index.entries:
