@@ -521,6 +521,8 @@ class World:
                 chunk = self.cdb[slot][entry.subfile]
 
                 position = parse_position(entry.position)
+                if chunk.filler:
+                    continue
                 assert position == chunk.position
                 chunk0 = chunk._header.unknown0
                 chunk1 = chunk._header.unknown1
