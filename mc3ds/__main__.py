@@ -75,7 +75,7 @@ def main(
 ) -> None:
     start_time = time.time()
     script_path = Path(__file__).parent
-    blank_world = script_path.parent / "blankworld"
+    blank_world = script_path / "blankworld"
     if out.exists() and not delete_out and mode != "javato3ds":
         logger.warning('already extracted, please move or delete the "out" folder')
         sys.exit(1)
