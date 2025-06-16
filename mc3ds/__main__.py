@@ -1,8 +1,11 @@
 import sys
 import time
 from pathlib import Path
+import importlib.resources
 import shutil
 import json
+
+from . import data
 
 if __package__ is None:
     print(
@@ -74,8 +77,8 @@ def main(
     delete_out: bool = False,
 ) -> None:
     start_time = time.time()
-    script_path = Path(__file__).parent
-    blank_world = script_path / "blankworld"
+    with importlib.resources.path(data, "blankworld") as path:
+        blank_world = path
     if out.exists() and not delete_out and mode != "javato3ds":
         logger.warning('already extracted, please move or delete the "out" folder')
         sys.exit(1)
@@ -106,9 +109,9 @@ def main(
         for number, vdb_file in world.vdb:
             region_path = vdb_out / f"region{number:d}"
             region_path.mkdir()
-            for index, data in vdb_file:
+            for index, vdb_data in vdb_file:
                 try:
-                    base_name = data.name.decode().replace("\0", "")
+                    base_name = vdb_data.name.decode().replace("\0", "")
                 except UnicodeDecodeError:
                     base_name = "None"
                 filename = base_name
@@ -122,14 +125,14 @@ def main(
                 with open(nbt_metadata_path, "x") as subfile_metadata_out:
                     json.dump(
                         {
-                            "unknown0": f"0x{data.unknown0:X}",
-                            "unknown1": f"0x{data.unknown1:X}",
-                            "unknown2": f"0x{data.unknown2:X}",
+                            "unknown0": f"0x{vdb_data.unknown0:X}",
+                            "unknown1": f"0x{vdb_data.unknown1:X}",
+                            "unknown2": f"0x{vdb_data.unknown2:X}",
                         },
                         subfile_metadata_out,
                     )
                 with open(nbt_path, "xb") as subfile_out:
-                    subfile_out.write(data.raw)
+                    subfile_out.write(vdb_data.raw)
 
         cdb_out = out / "cdb"
         cdb_out.mkdir()
