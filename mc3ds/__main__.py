@@ -78,7 +78,7 @@ def main(
 ) -> None:
     start_time = time.time()
     with importlib.resources.path(data, "blankworld") as blank_world_path:
-        blank_world = path
+        blank_world = blank_world_path
     if out.exists() and not delete_out and mode != "javato3ds":
         logger.warning('already extracted, please move or delete the "out" folder')
         sys.exit(1)
