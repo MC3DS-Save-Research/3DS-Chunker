@@ -73,6 +73,7 @@ class ChunkConverter:
                                 )
                                 sys.stderr.flush()
                                 block = Block("minecraft", "netherite_block")
+                            self.chunk.set_block(block, x, calculated_y, z)
 
     @property
     def region_position(self) -> tuple[int, int, int]:
