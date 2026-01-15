@@ -375,6 +375,7 @@ class DBDirectory:
         pass
 
     def __init__(self, path: str | bytes | os.PathLike) -> None:
+        self._cache = {}
         self._path = Path(path)
         self._reload_data()
 
@@ -413,7 +414,9 @@ class DBDirectory:
 
     def __getitem__(self, key: int) -> Any:
         path = self._files[key]
-        return self._process(open(path, "rb"))
+        if not path in self._cache:
+            self._cache[path] = self._process(open(path, "rb"))        
+        return self._cache[path]
 
 
 class CDBDirectory(DBDirectory):
