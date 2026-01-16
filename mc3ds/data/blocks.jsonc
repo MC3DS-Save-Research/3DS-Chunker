@@ -1489,7 +1489,7 @@
     "218:12": "minecraft:observer[powered=true,facing=west]",
     "218:13": "minecraft:observer[powered=true,facing=east]",
 
-    
+    /* Here starts GLAZED_TERRACOTTA */
     "219:0": "minecraft:purple_glazed_terracotta[facing=down]",
     "219:1": "minecraft:purple_glazed_terracotta[facing=up]",
     "219:2": "minecraft:purple_glazed_terracotta[facing=north]",
@@ -1586,6 +1586,14 @@
     "234:3": "minecraft:red_glazed_terracotta[facing=south]",
     "234:4": "minecraft:red_glazed_terracotta[facing=west]",
     "234:5": "minecraft:red_glazed_terracotta[facing=east]",
+    /* There is one block id missing for black_glazed_terracotta T_T
+    "234:0": "minecraft:black_glazed_terracotta[facing=down]",
+    "234:1": "minecraft:black_glazed_terracotta[facing=up]",
+    "234:2": "minecraft:black_glazed_terracotta[facing=north]",
+    "234:3": "minecraft:black_glazed_terracotta[facing=south]",
+    "234:4": "minecraft:black_glazed_terracotta[facing=west]",
+    "234:5": "minecraft:black_glazed_terracotta[facing=east]",
+    */
 
     "235:0": "minecraft:white_glazed_terracotta[facing=south]",
     "235:1": "minecraft:white_glazed_terracotta[facing=west]",

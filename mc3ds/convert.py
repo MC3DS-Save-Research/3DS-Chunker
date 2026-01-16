@@ -3,7 +3,7 @@ import shutil
 from pathlib import Path
 import random
 import re
-import json
+import json5
 import asyncio
 import logging
 from multiprocessing import Lock
@@ -167,8 +167,8 @@ def convert(
         level["Data"]["LevelName"] = String(world.name)
 
     # read the JSON files containing MCPE block IDs
-    with open(Path(__file__).parent / "data" / "blocks.json") as blocks_file:
-        raw_blocks = json.load(blocks_file)
+    with open(Path(__file__).parent / "data" / "blocks.jsonc") as blocks_file:
+        raw_blocks = json5.load(blocks_file)
     blocks = parse_block_json(raw_blocks)
 
     chunk_converters = []
