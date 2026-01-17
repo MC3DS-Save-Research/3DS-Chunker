@@ -414,7 +414,7 @@ class DBDirectory:
 
     def __getitem__(self, key: int) -> Any:
         path = self._files[key]
-        if not path in self._cache:
+        if path not in self._cache:
             self._cache[path] = self._process(open(path, "rb"))        
         return self._cache[path]
 
