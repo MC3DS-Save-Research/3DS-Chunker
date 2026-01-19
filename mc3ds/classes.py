@@ -6,6 +6,7 @@ from pathlib import Path
 import zlib
 import re
 import logging
+import warnings
 
 from .nbt import NBT
 from .parser import parser
@@ -201,7 +202,11 @@ class Subchunk:
     def data(self):
         if self.__data_cache is None:
             self.__data_cache = data = parser.BlockData(self.raw_decompressed)
-            assert len(data) == len(self.raw_decompressed)
+            if len(data) != len(self.raw_decompressed):
+                warnings.warn(
+                    f"length data {len(data):d} "
+                    f"is not expected size {len(self.raw_decompressed):d}",
+                    Warning, stacklevel=0)
             assert data.subchunkCount <= 8
             for subchunk in data.subchunks:
                 assert subchunk.constant0 == 0x0

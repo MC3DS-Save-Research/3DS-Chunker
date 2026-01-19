@@ -3,20 +3,22 @@ import shutil
 from pathlib import Path
 import random
 import re
-import json
+import json5
 import asyncio
 import logging
 from multiprocessing import Lock
 from concurrent.futures import ThreadPoolExecutor
 from collections import defaultdict
+from typing import Any
 
-from anvil import EmptyRegion, EmptyChunk, Block
+from anvil import EmptyRegion, Block
 import nbtlib
 from nbtlib.tag import String
 from tqdm import tqdm
 from p_tqdm import p_umap, p_uimap
 
 from .classes import World, Entry
+from .EmptyChunk import EmptyChunk
 
 OVERWORLD = 0
 NETHER = 1
@@ -34,9 +36,9 @@ class ChunkConverter:
         self.chunk_x, self.chunk_z, self.dimension = position
         self.entry = entry
         self.blocks = blocks
+        self.chunk = EmptyChunk(self.chunk_x, self.chunk_z)
 
     def place_blocks(self) -> None:
-        self.chunk = EmptyChunk(self.chunk_x, self.chunk_z)
         setted = set()
         for subchunk_y, subchunk in enumerate(self.entry.data_chunk.data.subchunks):
             y_offset = subchunk_y * 16
@@ -69,11 +71,16 @@ class ChunkConverter:
                                 block = self.blocks[block_id]
                             except KeyError:
                                 logger.warning(
-                                    f"unknown block {block_id} at {(x, calculated_y, z)} dimension {self.dimension}"
+                                    f"unknown block {block_id} at {(self.chunk_x * 16 + x, calculated_y, self.chunk_z * 16 + z)} dimension {self.dimension}"
                                 )
                                 sys.stderr.flush()
                                 block = Block("minecraft", "netherite_block")
                             self.chunk.set_block(block, x, calculated_y, z)
+
+    def place_biomes(self) -> None:
+        for section_z, biome_z in enumerate(self.entry.data_chunk.data.biomes):
+            for section_x, biome_v in enumerate(biome_z):
+                self.chunk.paint_biome_column(section_x, section_z, biome_v)
 
     @property
     def region_position(self) -> tuple[int, int, int]:
@@ -96,6 +103,7 @@ class RegionConverter:
             dimension_path / "region" / f"r.{self.region_x:d}.{self.region_z:d}.mca"
         )
         self.region = EmptyRegion(self.region_x, self.region_z)
+        self.chunk_count = 0
 
     def add_chunk(self, chunk: EmptyChunk) -> None:
         self.region.add_chunk(chunk)
@@ -139,6 +147,7 @@ def convert(
     world_out: Path,
     delete_out: bool = False,
     interactive: bool = True,
+    world_void = False,
 ) -> None:
     if world_out.exists():
         if not world_out.is_dir() or not (world_out / "level.dat").is_file():
@@ -155,23 +164,58 @@ def convert(
                     shutil.rmtree(world_out)
                     break
                 elif choice in ("N", "NO"):
-                    raise FileExistsError("world output folder already exists")
+                    print("world output folder already exists", file=sys.stderr)
+                    sys.exit(1)
                 elif not choice:
                     pass
                 else:
                     print("Invalid input, please enter Y or N")
         else:
-            raise FileExistsError("world output folder already exists")
+            print("world output folder already exists", file=sys.stderr)
+            sys.exit(1)
     shutil.copytree(blank_world, world_out)
     with nbtlib.load(world_out / "level.dat") as level:
         level["Data"]["LevelName"] = String(world.name)
+        # Set world spawn point
+        level["Data"]["SpawnX"] = nbtlib.tag.Int(world.metadata.value["SpawnX"])
+        level["Data"]["SpawnY"] = nbtlib.tag.Int(world.metadata.value["SpawnY"]) # the 3ds value is weird
+        level["Data"]["SpawnZ"] = nbtlib.tag.Int(world.metadata.value["SpawnZ"])
+        #level["Data"]["GameRules"] = nbtlib.tag.Compound()
+        #level["Data"]["GameRules"]["doMobSpawning"] = nbtlib.tag.String("true")
+        if "fml" in level:
+            del level["fml"]
+        if "forge" in level:
+            del level["forge"]
+        # Delete Player from level.dat so it uses the world spawn point (at least while no player info is imported)
+        if "Player" in level["Data"]:
+            del level["Data"]["Player"]
+        if "DataPacks" in level["Data"]:
+            del level["Data"]["DataPacks"]
+        if "GameRules" in level["Data"]:
+            del level["Data"]["GameRules"]
+
+        # remove when no void world
+        if not world_void:
+            if "WorldGenSettings" in level["Data"]:
+                del level["Data"]["WorldGenSettings"]
+
+        if "CustomBossEvents" in level["Data"]:
+            del level["Data"]["CustomBossEvents"]
+        if "ServerBrands" in level["Data"]:
+            del level["Data"]["ServerBrands"]
+        #if "WasModded" in level["Data"]:
+            #del level["Data"]["WasModded"]
+        if "ScheduledEvents" in level["Data"]:
+            del level["Data"]["ScheduledEvents"]
+        #print(level["Data"])
+    #sys.exit(0)
 
     # read the JSON files containing MCPE block IDs
-    with open(Path(__file__).parent / "data" / "blocks.json") as blocks_file:
-        raw_blocks = json.load(blocks_file)
+    with open(Path(__file__).parent / "data" / "blocks.jsonc") as blocks_file:
+        raw_blocks = json5.load(blocks_file)
     blocks = parse_block_json(raw_blocks)
 
-    chunk_converters = []
+    chunk_converters: list[ChunkConverter] = []
 
     for position, entry in world.entries.items():
         chunk_converters.append(ChunkConverter(position, entry, blocks))
@@ -198,7 +242,7 @@ def convert(
         region_converter.save()
 
     chunk_regions = defaultdict(list)
-    region_converters = {}
+    region_converters: dict[Any, RegionConverter] = {}
 
     class DummyPoolExecutorContext:
         def map(self, func, iter):
@@ -211,8 +255,35 @@ def convert(
 
         def __exit__(self, exc_type, exc_value, traceback):
             return False
+        
+    # get all regions
+    for chunk_converter in chunk_converters:
+        current_region_position = chunk_converter.region_position
+        if not current_region_position in region_converters:
+            region_converters[current_region_position] = RegionConverter(world_out, current_region_position)
+            region_converters[current_region_position].chunk_count = 1
+        else:
+            region_converters[current_region_position].chunk_count += 1
+
+    # process chunks for each region, save it and discard after to save memory
+    total_regions = len(region_converters.keys())
+    for ri, key in enumerate(list(region_converters.keys())):
+        count = 0
+        pbar = tqdm(total=region_converters[key].chunk_count, desc=f"Converting region {ri+1}/{total_regions} chunks")
+        for chunk_converter in chunk_converters[:]:
+            current_region_position = chunk_converter.region_position
+            if key == current_region_position:
+                count += 1
+                chunk_converter.place_blocks()
+                chunk_converter.place_biomes()
+                region_converters[key].add_chunk(chunk_converter.chunk)
+                chunk_converters.remove(chunk_converter)
+                pbar.update()
+        save_region(region_converters[key])
+        del region_converters[key]
 
     # disable threads
+    """
     ThreadPoolExecutor = DummyPoolExecutor
     with ThreadPoolExecutor() as executor:
         for current_region_position, chunk in tqdm(
@@ -221,12 +292,7 @@ def convert(
             desc="Converting chunks",
             unit="chunk",
         ):
-            try:
-                region_converter = region_converters[current_region_position]
-            except KeyError:
-                region_converter = region_converters[current_region_position] = (
-                    RegionConverter(world_out, current_region_position)
-                )
+            region_converter = region_converters[current_region_position]
             region_converter.add_chunk(chunk)
             # chunk_converters = chunk_regions[current_region_position]
             # chunk_converters.append(chunk)
@@ -245,3 +311,4 @@ def convert(
             region_converters.values(), desc="Saving regions", unit="region"
         ):
             save_region(region_converter)
+    """
