@@ -69,12 +69,18 @@ logger = logging.getLogger(__name__)
     is_flag=True,
     help="Permanently delete the output and world folders, and their contents (make sure they're the right folders!)",
 )
+@click.option(
+    "--world-void",
+    is_flag=True,
+    help="The converted world won't generate new chunks",
+)
 def main(
     path: Path,
     out: Path,
     mode: str,
     world_out: Path,
     delete_out: bool = False,
+    world_void: str = False,
 ) -> None:
     start_time = time.time()
     with importlib.resources.path(data, "blankworld") as blank_world_path:
@@ -86,7 +92,8 @@ def main(
     world = World(path)
     logger.info(f"World name: {world.name}")
     if mode == "convert":
-        convert(world, blank_world, world_out, delete_out)
+        convert(world, blank_world, world_out, 
+                delete_out=delete_out, world_void=world_void)
         total_time = time.time() - start_time
         minutes = int(total_time // 60)
         seconds = total_time % 60

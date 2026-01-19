@@ -1,5 +1,4 @@
 import sys
-import time
 import shutil
 from pathlib import Path
 import random
@@ -12,13 +11,14 @@ from concurrent.futures import ThreadPoolExecutor
 from collections import defaultdict
 from typing import Any
 
-from anvil import EmptyRegion, EmptyChunk, Block
+from anvil import EmptyRegion, Block
 import nbtlib
 from nbtlib.tag import String
 from tqdm import tqdm
 from p_tqdm import p_umap, p_uimap
 
 from .classes import World, Entry
+from .EmptyChunk import EmptyChunk
 
 OVERWORLD = 0
 NETHER = 1
@@ -36,9 +36,9 @@ class ChunkConverter:
         self.chunk_x, self.chunk_z, self.dimension = position
         self.entry = entry
         self.blocks = blocks
+        self.chunk = EmptyChunk(self.chunk_x, self.chunk_z)
 
     def place_blocks(self) -> None:
-        self.chunk = EmptyChunk(self.chunk_x, self.chunk_z)
         setted = set()
         for subchunk_y, subchunk in enumerate(self.entry.data_chunk.data.subchunks):
             y_offset = subchunk_y * 16
@@ -76,6 +76,11 @@ class ChunkConverter:
                                 sys.stderr.flush()
                                 block = Block("minecraft", "netherite_block")
                             self.chunk.set_block(block, x, calculated_y, z)
+
+    def place_biomes(self) -> None:
+        for section_z, biome_z in enumerate(self.entry.data_chunk.data.biomes):
+            for section_x, biome_v in enumerate(biome_z):
+                self.chunk.paint_biome_column(section_x, section_z, biome_v)
 
     @property
     def region_position(self) -> tuple[int, int, int]:
@@ -142,6 +147,7 @@ def convert(
     world_out: Path,
     delete_out: bool = False,
     interactive: bool = True,
+    world_void = False,
 ) -> None:
     if world_out.exists():
         if not world_out.is_dir() or not (world_out / "level.dat").is_file():
@@ -172,11 +178,37 @@ def convert(
         level["Data"]["LevelName"] = String(world.name)
         # Set world spawn point
         level["Data"]["SpawnX"] = nbtlib.tag.Int(world.metadata.value["SpawnX"])
-        level["Data"]["SpawnY"] = nbtlib.tag.Int(world.metadata.value["SpawnY"])
+        #level["Data"]["SpawnY"] = nbtlib.tag.Int(world.metadata.value["SpawnY"]) # the 3ds value is weird
         level["Data"]["SpawnZ"] = nbtlib.tag.Int(world.metadata.value["SpawnZ"])
+        #level["Data"]["GameRules"] = nbtlib.tag.Compound()
+        #level["Data"]["GameRules"]["doMobSpawning"] = nbtlib.tag.String("true")
+        if "fml" in level:
+            del level["fml"]
+        if "forge" in level:
+            del level["forge"]
         # Delete Player from level.dat so it uses the world spawn point (at least while no player info is imported)
         if "Player" in level["Data"]:
             del level["Data"]["Player"]
+        if "DataPacks" in level["Data"]:
+            del level["Data"]["DataPacks"]
+        if "GameRules" in level["Data"]:
+            del level["Data"]["GameRules"]
+
+        # remove when no void world
+        if not world_void:
+            if "WorldGenSettings" in level["Data"]:
+                del level["Data"]["WorldGenSettings"]
+
+        if "CustomBossEvents" in level["Data"]:
+            del level["Data"]["CustomBossEvents"]
+        if "ServerBrands" in level["Data"]:
+            del level["Data"]["ServerBrands"]
+        #if "WasModded" in level["Data"]:
+            #del level["Data"]["WasModded"]
+        if "ScheduledEvents" in level["Data"]:
+            del level["Data"]["ScheduledEvents"]
+        #print(level["Data"])
+    #sys.exit(0)
 
     # read the JSON files containing MCPE block IDs
     with open(Path(__file__).parent / "data" / "blocks.jsonc") as blocks_file:
@@ -234,7 +266,6 @@ def convert(
             region_converters[current_region_position].chunk_count += 1
 
     # process chunks for each region, save it and discard after to save memory
-    total_conv_time = time.perf_counter()
     total_regions = len(region_converters.keys())
     for ri, key in enumerate(list(region_converters.keys())):
         count = 0
@@ -244,13 +275,12 @@ def convert(
             if key == current_region_position:
                 count += 1
                 chunk_converter.place_blocks()
+                chunk_converter.place_biomes()
                 region_converters[key].add_chunk(chunk_converter.chunk)
                 chunk_converters.remove(chunk_converter)
                 pbar.update()
         save_region(region_converters[key])
         del region_converters[key]
-
-    print(f"World converted in {time.perf_counter() - total_conv_time:.6f}")
 
     # disable threads
     """
