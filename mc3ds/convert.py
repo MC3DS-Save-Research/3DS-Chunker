@@ -178,7 +178,7 @@ def convert(
         level["Data"]["LevelName"] = String(world.name)
         # Set world spawn point
         level["Data"]["SpawnX"] = nbtlib.tag.Int(world.metadata.value["SpawnX"])
-        #level["Data"]["SpawnY"] = nbtlib.tag.Int(world.metadata.value["SpawnY"]) # the 3ds value is weird
+        level["Data"]["SpawnY"] = nbtlib.tag.Int(world.metadata.value["SpawnY"]) # the 3ds value is weird
         level["Data"]["SpawnZ"] = nbtlib.tag.Int(world.metadata.value["SpawnZ"])
         #level["Data"]["GameRules"] = nbtlib.tag.Compound()
         #level["Data"]["GameRules"]["doMobSpawning"] = nbtlib.tag.String("true")
